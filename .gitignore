@@ -1,17 +1,55 @@
+# ========================
+# Maven
+# ========================
 target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-# https://maven.apache.org/wrapper/#usage-without-binary-jar
-.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.jar
+*.war
+*.ear
+*.class
 
-# Eclipse m2e generated files
-# Eclipse Core
-.project
-# JDT-specific (Eclipse Java Development Tools)
-.classpath
+# ========================
+# IntelliJ IDEA
+# ========================
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/dictionaries/
+.idea/shelf/
+.idea/aws.xml
+.idea/httpRequests/
+.idea/dataSources/
+.idea/dataSources.local.xml
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+
+# ========================
+# OS
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================
+# Logs
+# ========================
+*.log
+logs/
+
+# ========================
+# Archivos temporales
+# ========================
+*.tmp
+*.swp
+*.bak
