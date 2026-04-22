@@ -13,7 +13,7 @@
 
     <artifactId>common</artifactId>
     <packaging>jar</packaging>
-    <n>Airport Queue - Common (DTOs, protocolo, estructuras)</n>
+    <name>Airport Queue - Common</name>
 
     <!--
         Este módulo NO tiene JavaFX.
