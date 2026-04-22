@@ -1,108 +1,76 @@
 package com.aeropuerto.common;
 
-// ════════════════════════════════════════════════════════════════════════════
-// TipoAtencion.java  — enum con los tres tipos de cola
-// ════════════════════════════════════════════════════════════════════════════
-// (Poner en archivo separado TipoAtencion.java, aquí está todo junto
-//  para facilitar la revisión. Separar antes de compilar si el IDE lo pide.)
-
 /**
- * Tipos de cola disponibles en el aeropuerto.
- */
-/*
-public enum TipoAtencion {
-    GENERAL,      // Cola estándar para cualquier pasajero
-    PRIORITARIA,  // Adultos mayores, embarazadas, personas con discapacidad
-    ESPECIAL      // VIP u otros criterios definidos por el aeropuerto
-}
-*/
-
-// ════════════════════════════════════════════════════════════════════════════
-// EstadoPasajero.java  — ciclo de vida de un pasajero en el sistema
-// ════════════════════════════════════════════════════════════════════════════
-/*
-public enum EstadoPasajero {
-    EN_ESPERA,    // Registrado y en la cola, aún no llamado
-    EN_ATENCION,  // Fue llamado por el operador, se está atendiendo
-    ATENDIDO      // Proceso completado
-}
-*/
-
-// ════════════════════════════════════════════════════════════════════════════
-// Pasajero.java — DTO principal del sistema
-// ════════════════════════════════════════════════════════════════════════════
-
-/**
- * Representa a un pasajero registrado en el sistema.
- * Es el objeto almacenado tanto en las colas como en la tabla hash.
+ * Representa a un pasajero dentro del sistema de colas.
  *
- * DPI siempre se trata como String (puede contener guiones u otros
- * caracteres según el formato guatemalteco).
+ * Es el objeto central que viaja entre server y clientes (como texto
+ * dentro de Mensaje, no como objeto serializado).
  *
- * @author Pablo Acan
+ * Immutable en DPI y nombre — solo el estado y número de cola cambian.
  */
 public class Pasajero {
 
-    // ── Atributos ────────────────────────────────────────────────────────────
-    private final String       dpi;           // Clave única — inmutable
-    private final String       nombre;
-    private final TipoAtencion tipoAtencion;
-    private       EstadoPasajero estado;
-    private final int           numeroCola;   // Número correlativo asignado al registrarse
+    // ── Campos ───────────────────────────────────────────────────────────────
+    private final String dpi;          // Identificador único. NUNCA cambia.
+    private final String nombre;       // Nombre completo del pasajero
+    private final TipoAtencion tipo;   // A qué cola pertenece
+    private EstadoPasajero estado;     // Cambia durante el ciclo de vida
+    private int numeroCola;            // Número asignado al encolarse (1, 2, 3...)
 
     // ── Constructor ──────────────────────────────────────────────────────────
-    public Pasajero(String dpi, String nombre, TipoAtencion tipoAtencion, int numeroCola) {
-        this.dpi          = dpi.trim();
-        this.nombre       = nombre.trim();
-        this.tipoAtencion = tipoAtencion;
-        this.numeroCola   = numeroCola;
-        this.estado       = EstadoPasajero.EN_ESPERA;
+    public Pasajero(String dpi, String nombre, TipoAtencion tipo) {
+        if (dpi == null || dpi.isBlank())
+            throw new IllegalArgumentException("El DPI no puede ser nulo o vacío");
+        if (nombre == null || nombre.isBlank())
+            throw new IllegalArgumentException("El nombre no puede ser nulo o vacío");
+        if (tipo == null)
+            throw new IllegalArgumentException("El tipo de atención no puede ser nulo");
+
+        this.dpi        = dpi.trim();
+        this.nombre     = nombre.trim();
+        this.tipo       = tipo;
+        this.estado     = EstadoPasajero.EN_ESPERA; // Estado inicial siempre
+        this.numeroCola = 0; // Se asigna cuando el servidor lo encola
     }
 
-    // ── Getters ───────────────────────────────────────────────────────────────
-    public String        getDpi()          { return dpi; }
-    public String        getNombre()       { return nombre; }
-    public TipoAtencion  getTipoAtencion() { return tipoAtencion; }
-    public EstadoPasajero getEstado()      { return estado; }
-    public int           getNumeroCola()  { return numeroCola; }
+    // ── Getters ──────────────────────────────────────────────────────────────
+    public String getDpi()             { return dpi; }
+    public String getNombre()          { return nombre; }
+    public TipoAtencion getTipo()      { return tipo; }
+    public EstadoPasajero getEstado()  { return estado; }
+    public int getNumeroCola()         { return numeroCola; }
 
-    // ── Setter de estado (único campo mutable) ────────────────────────────────
-    public synchronized void setEstado(EstadoPasajero nuevoEstado) {
-        this.estado = nuevoEstado;
+    // ── Setters (solo los campos que cambian) ────────────────────────────────
+    public void setEstado(EstadoPasajero estado) {
+        if (estado == null)
+            throw new IllegalArgumentException("El estado no puede ser nulo");
+        this.estado = estado;
     }
 
-    // ── Serialización para el protocolo de mensajes ──────────────────────────
-    /**
-     * Convierte el pasajero en una cadena compatible con el protocolo:
-     * "dpi|nombre|tipoAtencion|estado|numeroCola"
-     */
-    public String serializar() {
-        return dpi + "|" + nombre + "|" + tipoAtencion.name()
-                + "|" + estado.name() + "|" + numeroCola;
+    public void setNumeroCola(int numeroCola) {
+        if (numeroCola < 1)
+            throw new IllegalArgumentException("El número de cola debe ser mayor a 0");
+        this.numeroCola = numeroCola;
     }
 
-    /**
-     * Reconstruye un Pasajero desde el formato serializado.
-     * Útil en el cliente cuando recibe ESTADO_COLA del servidor.
-     */
-    public static Pasajero deserializar(String cadena) {
-        String[] partes = cadena.split("\\|");
-        // partes[0]=dpi  [1]=nombre  [2]=tipo  [3]=estado  [4]=numeroCola
-        Pasajero p = new Pasajero(
-                partes[0],
-                partes[1],
-                TipoAtencion.valueOf(partes[2]),
-                Integer.parseInt(partes[4])
-        );
-        p.setEstado(EstadoPasajero.valueOf(partes[3]));
-        return p;
+    // ── Utilidades ───────────────────────────────────────────────────────────
+    @Override
+    public String toString() {
+        return "Pasajero{dpi='" + dpi + "', nombre='" + nombre +
+               "', tipo=" + tipo + ", estado=" + estado +
+               ", numeroCola=" + numeroCola + "}";
     }
 
     @Override
-    public String toString() {
-        return "Pasajero{dpi='" + dpi + "', nombre='" + nombre
-                + "', tipo=" + tipoAtencion
-                + ", estado=" + estado
-                + ", #" + numeroCola + "}";
+    public boolean equals(Object o) {
+        // Dos pasajeros son iguales si tienen el mismo DPI — nada más importa
+        if (this == o) return true;
+        if (!(o instanceof Pasajero)) return false;
+        return dpi.equals(((Pasajero) o).dpi);
+    }
+
+    @Override
+    public int hashCode() {
+        return dpi.hashCode();
     }
 }

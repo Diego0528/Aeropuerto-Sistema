@@ -13,7 +13,7 @@
 
     <artifactId>server</artifactId>
     <packaging>jar</packaging>
-    <n>Airport Queue - Server</n>
+    <name>Airport Queue - Server</name>
 
     <dependencies>
         <dependency>

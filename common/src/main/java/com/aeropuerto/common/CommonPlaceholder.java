@@ -14,11 +14,7 @@ package com.aeropuerto.common;
  *
  * Responsable de borrar esto: Pablo (cuando suba Cola.java y TablaHash.java)
  */
-public class
-
-
-
-CommonPlaceholder {
+public class CommonPlaceholder {
     public static String version() {
         return "Airport Queue System v1.0-SNAPSHOT";
     }
