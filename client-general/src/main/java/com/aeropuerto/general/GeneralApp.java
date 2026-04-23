@@ -1,6 +1,5 @@
 package com.aeropuerto.general;
 
-import com.aeropuerto.common.CommonPlaceholder;
 import javafx.application.Application;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -17,10 +16,9 @@ public class GeneralApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        Label label = new Label(CommonPlaceholder.version());
         Label sublabel = new Label("[Cola General] — UI en construcción");
 
-        VBox root = new VBox(12, label, sublabel);
+        VBox root = new VBox(12, sublabel);
         root.setAlignment(Pos.CENTER);
 
         primaryStage.setTitle("Aeropuerto :: Cola General");
