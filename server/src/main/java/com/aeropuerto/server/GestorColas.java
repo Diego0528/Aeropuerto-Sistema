@@ -32,7 +32,7 @@ public class GestorColas {
     private final Cola<Pasajero> colaGeneral;
     private final Cola<Pasajero> colaPrioritaria;
     private final Cola<Pasajero> colaEspecial;
-    private final TablaHash indicePorDpi;
+    private final TablaHash<String, Pasajero> indicePorDpi;
 
     // Contadores independientes por cola para numerar turnos
     private int contadorGeneral;
@@ -44,7 +44,7 @@ public class GestorColas {
         colaGeneral      = new Cola<>();
         colaPrioritaria  = new Cola<>();
         colaEspecial     = new Cola<>();
-        indicePorDpi     = new TablaHash();
+        indicePorDpi     = new TablaHash<>();
         contadorGeneral      = 0;
         contadorPrioritaria  = 0;
         contadorEspecial     = 0;
