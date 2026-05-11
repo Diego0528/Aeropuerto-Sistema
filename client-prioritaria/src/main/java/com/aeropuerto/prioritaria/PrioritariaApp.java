@@ -46,6 +46,7 @@ public class PrioritariaApp extends Application {
         "NK 505 — Fort Lauderdale",
         "VB 606 — Cancun",
         "TB 707 — San Jose, CR",
+
     };
 
     // Paleta de colores para fondo tipo cristal color Navy
@@ -629,6 +630,8 @@ public class PrioritariaApp extends Application {
     private boolean intentarConexion() {
         try {
             conexion.conectar();
+            String pc = java.net.InetAddress.getLocalHost().getHostName();
+            conexion.enviarYRecibir(Mensaje.identificar("PRIORITARIA", pc));
             return true;
         } catch (IOException e) {
             System.out.println("[PRIORITARIA] Sin conexión: " + e.getMessage());

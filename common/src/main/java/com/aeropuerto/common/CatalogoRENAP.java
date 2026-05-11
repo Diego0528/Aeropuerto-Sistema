@@ -4,8 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Catálogo ficticio del Registro Nacional de Personas (RENAP).
- * Simula la consulta de datos por DPI para el kiosko de registro.
+ Catálogo ficticio del Registro Nacional de Personas .
+ Simula la consulta de datos por DPI para el registro de cada ventanilla.
  */
 public class CatalogoRENAP {
 

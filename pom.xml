@@ -19,6 +19,8 @@
         <module>client-general</module>
         <module>client-prioritaria</module>
         <module>client-especial</module>
+        <module>client-logs</module>
+        <module>client-monitor</module>
     </modules>
 
     <!-- ── Versiones globales ──────────────────────────────────────────── -->
