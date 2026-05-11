@@ -24,6 +24,7 @@ public class CatalogoRENAP {
     private static final Map<String, DatosPersona> REGISTRO = new HashMap<>();
 
     static {
+        //Si da tiempo agreagar un array que sea para requerimientos
         reg("1234567890101", "Carlos García López",        "1985-03-15", "M");
         reg("2345678901201", "María José Pérez Morales",   "1990-07-22", "F");
         reg("3456789012301", "Juan Pablo Méndez Castillo", "1975-11-08", "M");

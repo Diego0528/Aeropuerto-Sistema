@@ -1,23 +1,34 @@
 package com.aeropuerto.prioritaria;
 
 import com.aeropuerto.common.*;
+import javafx.animation.*;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Ventanilla operador — Cola Prioritaria.
  * Muestra checklist de asistencia especial junto con el vuelo del pasajero.
+ *
+ * DISEÑO: Glassmorphism oscuro navy — misma plantilla que RegistroApp.
+ * Acento naranja Apple (#FF9F0A / #FF9500) — identidad de cola Prioritaria.
+ * Checklist rediseñado como tarjetas glass interactivas.
  */
 public class PrioritariaApp extends Application {
 
@@ -34,163 +45,493 @@ public class PrioritariaApp extends Application {
         "AV 404 — Medellin",
         "NK 505 — Fort Lauderdale",
         "VB 606 — Cancun",
-        "TB 707 — San Jose, CR"
+        "TB 707 — San Jose, CR",
     };
 
+    // Paleta de colores para fondo tipo cristal color Navy
+    static final String T_DARK  = "rgba(255,255,255,0.95)";
+    static final String T_MED   = "rgba(255,255,255,0.70)";
+    static final String T_DIM   = "rgba(255,255,255,0.45)";
+
+    // Acento — Cola Prioritaria = Naranja Apple
+    static final String ACC_BG  = "rgba(255,149,0,0.15)";
+    static final String ACC_BR  = "rgba(255,149,0,0.45)";
+    static final String ACC_T   = "#FF9F0A";
+    static final String ACC_BAR = "#FF9500";
+
+    // Conexión
+    static final String C_CONN_BG  = "rgba(52,199,89,0.12)";
+    static final String C_CONN_BR  = "rgba(52,199,89,0.38)";
+    static final String C_CONN_T   = "#4CD964";
+    static final String C_CONN_DOT = "#34C759";
+
+    // ── Estado ────────────────────────────────────────────────────────────────
     private ConexionServidor conexion;
     private String dpiActual = null;
 
-    private Label     labelTurno;
-    private Label     labelNombre;
-    private Label     labelEstado;
+    private Label            labelTurno;
+    private Label            labelNombre;
+    private Label            labelEstado;
     private ComboBox<String> comboVuelo;
-    private CheckBox  cbSillaRuedas;
-    private CheckBox  cbAsistenciaCaminar;
-    private CheckBox  cbOxigeno;
-    private CheckBox  cbAcompanante;
-    private CheckBox  cbEmbarazada;
-    private CheckBox  cbAdultoMayor;
-    private Button    botonLlamar;
-    private Button    botonFinalizar;
+    private CheckBox         cbSillaRuedas;
+    private CheckBox         cbAsistenciaCaminar;
+    private CheckBox         cbOxigeno;
+    private CheckBox         cbAcompanante;
+    private CheckBox         cbEmbarazada;
+    private CheckBox         cbAdultoMayor;
+    private Button           botonLlamar;
+    private Button           botonFinalizar;
+
+    private Label lblAvatarInicial;
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void start(Stage stage) {
-        stage.setTitle("Ventanilla Prioritaria — Aeropuerto Guatemala");
-        stage.setResizable(false);
+        stage.setTitle("AeroQueue — Cola Prioritaria");
+        stage.setResizable(true);
+        stage.setMinWidth(880);
+        stage.setMinHeight(560);
 
         conexion = new ConexionServidor(HOST, PUERTO);
         boolean disponible = intentarConexion();
 
-        Scene scene = new Scene(construirUI(disponible), 640, 580);
+        VBox root = construirUI(disponible);
+        Scene scene = new Scene(root);
+        scene.setFill(Color.web("#0f1629"));
         stage.setScene(scene);
         stage.setOnCloseRequest(e -> conexion.desconectar());
+        stage.setWidth(980);
+        stage.setHeight(660);
         stage.show();
+
+        root.setOpacity(0);
+        root.setTranslateY(-8);
+        new ParallelTransition(
+                anim_fade(root, 0, 1, 320),
+                anim_slide(root, -8, 0, 320)
+        ).play();
     }
 
+    // ── Raíz ─────────────────────────────────────────────────────────────────
+
     private VBox construirUI(boolean disponible) {
+        // Inicializar CheckBoxes (no se agregan al scene graph directamente)
+        cbSillaRuedas       = new CheckBox("Silla de ruedas");
+        cbAsistenciaCaminar = new CheckBox("Asistencia para caminar");
+        cbOxigeno           = new CheckBox("Oxígeno a bordo");
+        cbAcompanante       = new CheckBox("Acompañante autorizado");
+        cbEmbarazada        = new CheckBox("Embarazada (más de 32 semanas)");
+        cbAdultoMayor       = new CheckBox("Adulto mayor (más de 65 años)");
+
         VBox root = new VBox(0);
-        root.setStyle("-fx-background-color: #f0f4f8;");
+        root.setStyle("-fx-background-color: linear-gradient(to bottom, #1a2744, #0f1629);");
 
-        // Encabezado
-        HBox header = new HBox();
-        header.setPadding(new Insets(16, 20, 16, 20));
-        header.setStyle("-fx-background-color: #5C3317;");
-        header.setAlignment(Pos.CENTER_LEFT);
-        Label titulo = new Label("Cola Prioritaria — Ventanilla Operador");
-        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        titulo.setTextFill(Color.WHITE);
-        header.getChildren().add(titulo);
+        VBox app = new VBox(0);
+        app.setStyle(
+                "-fx-background-color: rgba(255,255,255,0.10);" +
+                "-fx-background-radius: 18;" +
+                "-fx-border-radius: 18;" +
+                "-fx-border-color: rgba(255,255,255,0.22);" +
+                "-fx-border-width: 1;" +
+                "-fx-effect: dropshadow(gaussian, rgba(0,0,20,0.60), 40, 0, 0, 12);"
+        );
+        VBox.setVgrow(app, Priority.ALWAYS);
+        VBox.setMargin(app, new Insets(35, 56, 35, 56));
 
-        // Panel pasajero actual
-        VBox panelPasajero = new VBox(8);
-        panelPasajero.setPadding(new Insets(18, 20, 18, 20));
-        panelPasajero.setStyle(
-            "-fx-background-color: white; -fx-border-color: #d4c4b0; -fx-border-width: 0 0 1 0;"
+        // checklist VBox es creado aquí y pasado a ambas columnas
+        VBox checklist = new VBox(6);
+        checklist.setDisable(true);
+        checklist.getChildren().addAll(
+                crearCardChecklist(cbSillaRuedas,       "♿  Silla de ruedas"),
+                crearCardChecklist(cbAsistenciaCaminar, "🚶  Asistencia para caminar"),
+                crearCardChecklist(cbOxigeno,           "💨  Oxígeno a bordo"),
+                crearCardChecklist(cbAcompanante,       "👤  Acompañante autorizado"),
+                crearCardChecklist(cbEmbarazada,        "🤰  Embarazada (+32 semanas)"),
+                crearCardChecklist(cbAdultoMayor,       "👴  Adulto mayor (+65 años)")
         );
 
-        Label lblSeccion = new Label("PASAJERO EN ATENCION");
-        lblSeccion.setFont(Font.font("Arial", FontWeight.BOLD, 11));
-        lblSeccion.setTextFill(Color.web("#888888"));
+        ScrollPane scroll = construirScrollContenido(disponible, checklist);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        HBox infoPasajero = new HBox(24);
-        infoPasajero.setAlignment(Pos.CENTER_LEFT);
+        app.getChildren().addAll(construirNav(disponible), construirPaxStrip(), scroll);
+        root.getChildren().add(app);
+        VBox.setVgrow(app, Priority.ALWAYS);
+        return root;
+    }
 
-        VBox boxTurno = new VBox(2);
-        Label lblTurnoTag = new Label("Turno");
-        lblTurnoTag.setFont(Font.font("Arial", 11));
-        lblTurnoTag.setTextFill(Color.web("#888888"));
+    // ── Nav ───────────────────────────────────────────────────────────────────
+
+    private HBox construirNav(boolean disponible) {
+        HBox nav = new HBox();
+        nav.setAlignment(Pos.CENTER_LEFT);
+        nav.setPadding(new Insets(15, 28, 15, 28));
+        nav.setPrefHeight(48);
+        nav.setStyle(
+                "-fx-background-color: rgba(255,255,255,0.07);" +
+                "-fx-border-color: rgba(255,255,255,0.12);" +
+                "-fx-border-width: 0 0 1 0;"
+        );
+
+        Rectangle brandIco = new Rectangle(22, 22);
+        brandIco.setArcWidth(6); brandIco.setArcHeight(6);
+        brandIco.setFill(Color.web("#007AFF"));
+        Label brandIcoLbl = new Label("✈");
+        brandIcoLbl.setFont(Font.font("Arial", FontWeight.BOLD, 10));
+        brandIcoLbl.setTextFill(Color.WHITE);
+        StackPane brandBox = new StackPane(brandIco, brandIcoLbl);
+        brandBox.setPrefSize(22, 22);
+
+        Label brandName = new Label("AEROQUEUE");
+        brandName.setFont(Font.font("Arial", FontWeight.BOLD, 11));
+        brandName.setTextFill(Color.web(T_MED));
+        brandName.setStyle("-fx-letter-spacing: 1.8px;");
+
+        Label queueBadge = new Label("PRIORITARIA");
+        queueBadge.setFont(Font.font("Arial", FontWeight.BOLD, 9));
+        queueBadge.setTextFill(Color.web(ACC_T));
+        queueBadge.setPadding(new Insets(3, 10, 3, 10));
+        queueBadge.setStyle(
+                "-fx-background-color: " + ACC_BG + ";" +
+                "-fx-border-color: " + ACC_BR + ";" +
+                "-fx-border-radius: 20;" +
+                "-fx-background-radius: 20;" +
+                "-fx-border-width: 1;" +
+                "-fx-letter-spacing: 1.5px;"
+        );
+
+        HBox brand = new HBox(10, brandBox, brandName, queueBadge);
+        brand.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(brand, Priority.ALWAYS);
+
+        Label lblFecha = navLabel(LocalDate.now().format(
+                DateTimeFormatter.ofPattern("EEEE dd / MM / yyyy", new java.util.Locale("es", "GT"))));
+        Label lblHora = navLabel("--:--:--");
+
+        Timeline reloj = new Timeline(new KeyFrame(Duration.seconds(1), e ->
+                lblHora.setText(java.time.LocalTime.now().format(
+                        DateTimeFormatter.ofPattern("HH:mm:ss")))));
+        reloj.setCycleCount(Animation.INDEFINITE);
+        reloj.play();
+
+        HBox connBadge = construirBadgeConexion(disponible);
+        HBox derecha = new HBox(18, lblFecha, lblHora, connBadge);
+        derecha.setAlignment(Pos.CENTER_RIGHT);
+
+        nav.getChildren().addAll(brand, derecha);
+        return nav;
+    }
+
+    private Label navLabel(String texto) {
+        Label lbl = new Label(texto);
+        lbl.setFont(Font.font("Segoe UI", 11));
+        lbl.setTextFill(Color.web(T_DIM));
+        return lbl;
+    }
+
+    private HBox construirBadgeConexion(boolean conectado) {
+        Circle punto = new Circle(2.5, Color.web(C_CONN_DOT));
+        if (conectado) {
+            ScaleTransition p = new ScaleTransition(Duration.millis(1200), punto);
+            p.setFromX(1); p.setToX(1.6); p.setFromY(1); p.setToY(1.6);
+            p.setCycleCount(Animation.INDEFINITE); p.setAutoReverse(true); p.play();
+        }
+        Label lbl = new Label(conectado ? "Conectado" : "Sin conexión");
+        lbl.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+        lbl.setTextFill(Color.web(conectado ? C_CONN_T : "#D70015"));
+        HBox badge = new HBox(5, punto, lbl);
+        badge.setAlignment(Pos.CENTER);
+        badge.setPadding(new Insets(4, 10, 4, 10));
+        badge.setStyle(
+                "-fx-background-color: " + (conectado ? C_CONN_BG : "rgba(215,0,21,0.10)") + ";" +
+                "-fx-border-color: " + (conectado ? C_CONN_BR : "rgba(215,0,21,0.40)") + ";" +
+                "-fx-border-radius: 20;" +
+                "-fx-background-radius: 20;" +
+                "-fx-border-width: 1;"
+        );
+        return badge;
+    }
+
+    // ── Strip pasajero ────────────────────────────────────────────────────────
+
+    private VBox construirPaxStrip() {
+        VBox zona = new VBox(0);
+        zona.setStyle(
+                "-fx-background-color: rgba(0,0,0,0.10);" +
+                "-fx-border-color: rgba(255,255,255,0.12);" +
+                "-fx-border-width: 0 0 1 0;"
+        );
+        zona.setPadding(new Insets(16, 28, 18, 28));
+
+        Label zoneLbl = secLabel("Pasajero en atención");
+        zoneLbl.setPadding(new Insets(0, 0, 12, 0));
+
+        lblAvatarInicial = new Label("—");
+        lblAvatarInicial.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16));
+        lblAvatarInicial.setTextFill(Color.web(ACC_T));
+        StackPane avatar = new StackPane(lblAvatarInicial);
+        avatar.setPrefSize(50, 50);
+        avatar.setMinSize(50, 50);
+        avatar.setStyle(
+                "-fx-background-color: " + ACC_BG + ";" +
+                "-fx-border-color: " + ACC_BR + ";" +
+                "-fx-border-radius: 25;" +
+                "-fx-background-radius: 25;" +
+                "-fx-border-width: 1.5;"
+        );
+
         labelTurno = new Label("—");
-        labelTurno.setFont(Font.font("Arial", FontWeight.BOLD, 44));
-        labelTurno.setTextFill(Color.web("#5C3317"));
-        boxTurno.getChildren().addAll(lblTurnoTag, labelTurno);
+        labelTurno.setFont(Font.font("Consolas", FontWeight.BOLD, 46));
+        labelTurno.setTextFill(Color.web(ACC_T));
 
-        Separator sepV = new Separator();
-        sepV.setStyle("-fx-orientation: vertical;");
-        sepV.setPrefHeight(60);
+        Rectangle sepV = new Rectangle(1, 55);
+        sepV.setFill(Color.web("rgba(255,255,255,0.14)"));
 
-        VBox boxNombre = new VBox(4);
-        Label lblNombreTag = new Label("Nombre");
-        lblNombreTag.setFont(Font.font("Arial", 11));
-        lblNombreTag.setTextFill(Color.web("#888888"));
-        labelNombre = new Label("Ningun pasajero en atencion");
-        labelNombre.setFont(Font.font("Arial", FontWeight.BOLD, 20));
-        labelNombre.setTextFill(Color.web("#333333"));
+        labelNombre = new Label("Ningún pasajero en atención");
+        labelNombre.setFont(Font.font("Segoe UI", FontWeight.BOLD, 18));
+        labelNombre.setTextFill(Color.web(T_DARK));
         labelNombre.setWrapText(true);
-        boxNombre.getChildren().addAll(lblNombreTag, labelNombre);
 
-        infoPasajero.getChildren().addAll(boxTurno, sepV, boxNombre);
-        panelPasajero.getChildren().addAll(lblSeccion, infoPasajero);
+        labelEstado = new Label("Cola Prioritaria · Esperando acción");
+        labelEstado.setFont(Font.font("Segoe UI", 11));
+        labelEstado.setTextFill(Color.web(T_DIM));
 
-        // Formulario
-        GridPane form = new GridPane();
-        form.setHgap(12);
-        form.setVgap(14);
-        form.setPadding(new Insets(20, 20, 10, 20));
+        labelNombre.textProperty().addListener((obs, old, val) -> {
+            boolean vacio = val == null || val.isBlank()
+                    || val.toLowerCase().startsWith("ningún")
+                    || val.toLowerCase().startsWith("ningun");
+            if (vacio) {
+                lblAvatarInicial.setText("—");
+            } else {
+                String[] p = val.trim().split("\\s+");
+                lblAvatarInicial.setText(p.length >= 2
+                        ? (p[0].substring(0, 1) + p[1].substring(0, 1)).toUpperCase()
+                        : p[0].substring(0, 1).toUpperCase());
+            }
+        });
 
-        Label lblVuelo = new Label("Vuelo confirmado:");
-        lblVuelo.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        VBox infoNombre = new VBox(4, labelNombre, labelEstado);
+        HBox.setHgrow(infoNombre, Priority.ALWAYS);
+
+        HBox strip = new HBox(20, avatar, labelTurno, sepV, infoNombre);
+        strip.setAlignment(Pos.CENTER_LEFT);
+
+        zona.getChildren().addAll(zoneLbl, strip);
+        return zona;
+    }
+
+    // ── Scroll + Columnas ─────────────────────────────────────────────────────
+
+    private ScrollPane construirScrollContenido(boolean disponible, VBox checklist) {
+        HBox cuerpo = new HBox(0);
+        cuerpo.setStyle("-fx-background-color: transparent;");
+
+        VBox colIzq = construirColIzquierda(checklist);
+        VBox colDer  = construirColDerecha(disponible, checklist);
+
+        colIzq.setStyle(
+                "-fx-background-color: transparent;" +
+                "-fx-border-color: rgba(255,255,255,0.12);" +
+                "-fx-border-width: 0 1 0 0;"
+        );
+        HBox.setHgrow(colIzq, Priority.ALWAYS);
+
+        cuerpo.getChildren().addAll(colIzq, colDer);
+
+        ScrollPane sp = new ScrollPane(cuerpo);
+        sp.setFitToWidth(true);
+        sp.setFitToHeight(true);
+        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sp.setStyle(
+                "-fx-background-color: transparent;" +
+                "-fx-background: transparent;" +
+                "-fx-border-width: 0;"
+        );
+        return sp;
+    }
+
+    private VBox construirColIzquierda(VBox checklist) {
+        VBox col = new VBox(18);
+        col.setPadding(new Insets(22, 28, 22, 28));
+
+        // Vuelo
+        Label lblVuelo = secLabel("Vuelo confirmado");
+        lblVuelo.setPadding(new Insets(0, 0, 8, 0));
         comboVuelo = new ComboBox<>();
         comboVuelo.getItems().addAll(VUELOS);
         comboVuelo.setPromptText("Seleccionar vuelo...");
-        comboVuelo.setPrefWidth(340);
+        comboVuelo.setMaxWidth(Double.MAX_VALUE);
         comboVuelo.setDisable(true);
+        comboVuelo.setStyle(estiloCombo());
+        col.getChildren().add(new VBox(0, lblVuelo, comboVuelo));
+        col.getChildren().add(separador());
 
-        Label lblChecklist = new Label("Asistencia requerida:");
-        lblChecklist.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        // Checklist de asistencia
+        Label lblCheck = secLabel("Asistencia requerida");
+        lblCheck.setPadding(new Insets(0, 0, 8, 0));
+        col.getChildren().add(new VBox(0, lblCheck, checklist));
+        VBox.setVgrow(col, Priority.ALWAYS);
 
-        cbSillaRuedas       = new CheckBox("Silla de ruedas");
-        cbAsistenciaCaminar = new CheckBox("Asistencia para caminar");
-        cbOxigeno           = new CheckBox("Oxigeno a bordo");
-        cbAcompanante       = new CheckBox("Acompanante autorizado");
-        cbEmbarazada        = new CheckBox("Embarazada (mas de 32 semanas)");
-        cbAdultoMayor       = new CheckBox("Adulto mayor (mas de 65 anos)");
+        return col;
+    }
 
-        VBox checklist = new VBox(8,
-            cbSillaRuedas, cbAsistenciaCaminar, cbOxigeno,
-            cbAcompanante, cbEmbarazada, cbAdultoMayor
-        );
-        checklist.setDisable(true);
+    private VBox construirColDerecha(boolean disponible, VBox checklist) {
+        VBox col = new VBox(12);
+        col.setPadding(new Insets(22, 24, 22, 24));
+        col.setPrefWidth(300);
+        col.setMinWidth(260);
+        col.setStyle("-fx-background-color: rgba(0,0,0,0.10);");
 
-        form.add(lblVuelo,     0, 0); form.add(comboVuelo, 1, 0);
-        form.add(lblChecklist, 0, 1); form.add(checklist,  1, 1);
+        Label lbl = secLabel("Acciones");
+        col.getChildren().add(lbl);
 
-        // Botones
-        HBox botones = new HBox(12);
-        botones.setPadding(new Insets(4, 20, 16, 20));
-        botones.setAlignment(Pos.CENTER_LEFT);
-
-        botonLlamar = new Button("Llamar Siguiente");
+        botonLlamar = new Button("Llamar siguiente →");
         botonLlamar.setFont(Font.font("Arial", FontWeight.BOLD, 13));
-        botonLlamar.setStyle(
-            "-fx-background-color: #5C3317; -fx-text-fill: white; " +
-            "-fx-padding: 10 20 10 20; -fx-background-radius: 5;"
-        );
+        botonLlamar.setMaxWidth(Double.MAX_VALUE);
+        botonLlamar.setStyle(estiloBtn());
         botonLlamar.setDisable(!disponible);
+        botonLlamar.setOnMouseEntered(e -> botonLlamar.setOpacity(0.85));
+        botonLlamar.setOnMouseExited(e  -> botonLlamar.setOpacity(1.0));
+        botonLlamar.setOnMousePressed(e -> animPress(botonLlamar, true));
+        botonLlamar.setOnMouseReleased(e -> animPress(botonLlamar, false));
         botonLlamar.setOnAction(e -> llamarSiguiente(checklist));
 
-        botonFinalizar = new Button("Finalizar Atencion");
+        botonFinalizar = new Button("Finalizar atención ✓");
         botonFinalizar.setFont(Font.font("Arial", FontWeight.BOLD, 13));
-        botonFinalizar.setStyle(
-            "-fx-background-color: #1E6B3C; -fx-text-fill: white; " +
-            "-fx-padding: 10 20 10 20; -fx-background-radius: 5;"
-        );
+        botonFinalizar.setMaxWidth(Double.MAX_VALUE);
+        botonFinalizar.setStyle(estiloBtnSecundario());
         botonFinalizar.setDisable(true);
+        botonFinalizar.setOnMouseEntered(e -> { if (!botonFinalizar.isDisabled()) botonFinalizar.setOpacity(0.80); });
+        botonFinalizar.setOnMouseExited(e  -> botonFinalizar.setOpacity(1.0));
+        botonFinalizar.setOnMousePressed(e -> animPress(botonFinalizar, true));
+        botonFinalizar.setOnMouseReleased(e -> animPress(botonFinalizar, false));
         botonFinalizar.setOnAction(e -> finalizarAtencion(checklist));
 
-        botones.getChildren().addAll(botonLlamar, botonFinalizar);
-
-        // Estado
-        labelEstado = new Label(disponible
-            ? "Conectado — Cola PRIORITARIA"
-            : "Sin conexion al servidor. Verifica que este corriendo.");
-        labelEstado.setFont(Font.font("Arial", 12));
-        labelEstado.setTextFill(disponible ? Color.web("#1E6B3C") : Color.web("#990000"));
-        labelEstado.setPadding(new Insets(2, 20, 10, 20));
-        labelEstado.setWrapText(true);
-
-        root.getChildren().addAll(header, panelPasajero, form, botones, labelEstado);
-        return root;
+        Region spacer = new Region();
+        VBox.setVgrow(spacer, Priority.ALWAYS);
+        col.getChildren().addAll(spacer, botonLlamar, botonFinalizar);
+        return col;
     }
+
+    // ── Checklist glass card ──────────────────────────────────────────────────
+
+    private HBox crearCardChecklist(CheckBox cb, String etiqueta) {
+        Circle dot = new Circle(5, Color.TRANSPARENT);
+        dot.setStroke(Color.web("rgba(255,255,255,0.30)"));
+        dot.setStrokeWidth(1.5);
+
+        Label lbl = new Label(etiqueta);
+        lbl.setFont(Font.font("Segoe UI", 13));
+        lbl.setTextFill(Color.web(T_DIM));
+        HBox.setHgrow(lbl, Priority.ALWAYS);
+
+        HBox card = new HBox(12, dot, lbl);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(11, 14, 11, 14));
+        card.setStyle(estiloCardCheck(false));
+        card.setOnMouseClicked(e -> cb.setSelected(!cb.isSelected()));
+
+        cb.selectedProperty().addListener((obs, old, sel) -> {
+            card.setStyle(estiloCardCheck(sel));
+            if (sel) {
+                dot.setFill(Color.web(ACC_BAR));
+                dot.setStroke(Color.web(ACC_BR));
+                lbl.setTextFill(Color.web(ACC_T));
+            } else {
+                dot.setFill(Color.TRANSPARENT);
+                dot.setStroke(Color.web("rgba(255,255,255,0.30)"));
+                lbl.setTextFill(Color.web(T_DIM));
+            }
+        });
+
+        return card;
+    }
+
+    private String estiloCardCheck(boolean sel) {
+        if (!sel) return
+                "-fx-background-color: rgba(255,255,255,0.07);" +
+                "-fx-border-color: rgba(255,255,255,0.16);" +
+                "-fx-border-radius: 10;" +
+                "-fx-background-radius: 10;" +
+                "-fx-border-width: 1;" +
+                "-fx-cursor: hand;";
+        return
+                "-fx-background-color: " + ACC_BG + ";" +
+                "-fx-border-color: " + ACC_BR + ";" +
+                "-fx-border-radius: 10;" +
+                "-fx-background-radius: 10;" +
+                "-fx-border-width: 1;" +
+                "-fx-cursor: hand;";
+    }
+
+    // ── Helpers UI ────────────────────────────────────────────────────────────
+
+    private Label secLabel(String texto) {
+        Label lbl = new Label(texto.toUpperCase());
+        lbl.setFont(Font.font("Segoe UI", FontWeight.BOLD, 9));
+        lbl.setTextFill(Color.web(T_DIM));
+        lbl.setStyle("-fx-letter-spacing: 1.8px;");
+        return lbl;
+    }
+
+    private HBox separador() {
+        Rectangle r = new Rectangle(0, 1, Color.web("rgba(255,255,255,0.12)"));
+        HBox sep = new HBox(r);
+        r.widthProperty().bind(sep.widthProperty());
+        return sep;
+    }
+
+    private String estiloCombo() {
+        return "-fx-background-color: rgba(255,255,255,0.12);" +
+               "-fx-border-width: 0;" +
+               "-fx-background-radius: 10;" +
+               "-fx-padding: 4 10 4 10;";
+    }
+
+    private String estiloBtn() {
+        return "-fx-background-color: #007AFF;" +
+               "-fx-border-width: 0;" +
+               "-fx-background-radius: 12;" +
+               "-fx-text-fill: white;" +
+               "-fx-font-weight: bold;" +
+               "-fx-padding: 13 22 13 22;" +
+               "-fx-cursor: hand;" +
+               "-fx-effect: dropshadow(gaussian, rgba(0,122,255,0.50), 12, 0, 0, 4);";
+    }
+
+    private String estiloBtnSecundario() {
+        return "-fx-background-color: rgba(255,255,255,0.14);" +
+               "-fx-border-color: rgba(255,255,255,0.22);" +
+               "-fx-border-width: 1;" +
+               "-fx-background-radius: 12;" +
+               "-fx-border-radius: 12;" +
+               "-fx-text-fill: rgba(255,255,255,0.88);" +
+               "-fx-font-weight: bold;" +
+               "-fx-padding: 13 22 13 22;" +
+               "-fx-cursor: hand;";
+    }
+
+    private void animPress(Button b, boolean pressed) {
+        ScaleTransition st = new ScaleTransition(Duration.millis(70), b);
+        st.setToX(pressed ? 0.97 : 1.0);
+        st.setToY(pressed ? 0.97 : 1.0);
+        st.play();
+    }
+
+    private FadeTransition anim_fade(Node n, double from, double to, int ms) {
+        FadeTransition ft = new FadeTransition(Duration.millis(ms), n);
+        ft.setFromValue(from); ft.setToValue(to);
+        return ft;
+    }
+
+    private TranslateTransition anim_slide(Node n, double from, double to, int ms) {
+        TranslateTransition tt = new TranslateTransition(Duration.millis(ms), n);
+        tt.setFromY(from); tt.setToY(to);
+        tt.setInterpolator(Interpolator.EASE_OUT);
+        return tt;
+    }
+
+    // ── Lógica original ───────────────────────────────────────────────────────
 
     private void llamarSiguiente(VBox checklist) {
         botonLlamar.setDisable(true);
@@ -213,7 +554,7 @@ public class PrioritariaApp extends Application {
                         botonFinalizar.setDisable(false);
                         mostrarEstado("Atendiendo: " + nombre + " | Turno #" + turno, true);
                     } else if (resp.getTipo() == TipoMensaje.COLA_VACIA) {
-                        mostrarEstado("Cola Prioritaria vacia. No hay pasajeros en espera.", false);
+                        mostrarEstado("Cola Prioritaria vacía. No hay pasajeros en espera.", false);
                     } else {
                         mostrarEstado("Respuesta inesperada: " + resp.serializar(), false);
                     }
@@ -221,7 +562,7 @@ public class PrioritariaApp extends Application {
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    mostrarEstado("Error de conexion: " + e.getMessage(), false);
+                    mostrarEstado("Error de conexión: " + e.getMessage(), false);
                     botonLlamar.setDisable(false);
                 });
             }
@@ -243,7 +584,7 @@ public class PrioritariaApp extends Application {
                 Mensaje resp = conexion.enviarYRecibir(Mensaje.finAtencion(dpiActual));
                 Platform.runLater(() -> {
                     if (resp.getTipo() == TipoMensaje.CONFIRMACION) {
-                        mostrarEstado("Atencion finalizada correctamente.", true);
+                        mostrarEstado("Atención finalizada correctamente.", true);
                     } else {
                         mostrarEstado("Error al finalizar: " + resp.getCampo(0), false);
                     }
@@ -252,7 +593,7 @@ public class PrioritariaApp extends Application {
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    mostrarEstado("Error de conexion: " + e.getMessage(), false);
+                    mostrarEstado("Error de conexión: " + e.getMessage(), false);
                     botonLlamar.setDisable(false);
                     botonFinalizar.setDisable(false);
                 });
@@ -263,7 +604,7 @@ public class PrioritariaApp extends Application {
     private void limpiarPanel(VBox checklist) {
         dpiActual = null;
         labelTurno.setText("—");
-        labelNombre.setText("Ningun pasajero en atencion");
+        labelNombre.setText("Ningún pasajero en atención");
         comboVuelo.setDisable(true);
         comboVuelo.getSelectionModel().clearSelection();
         checklist.setDisable(true);
@@ -282,7 +623,7 @@ public class PrioritariaApp extends Application {
 
     private void mostrarEstado(String msg, boolean ok) {
         labelEstado.setText(msg);
-        labelEstado.setTextFill(ok ? Color.web("#1E6B3C") : Color.web("#990000"));
+        labelEstado.setTextFill(ok ? Color.web("#4CD964") : Color.web("#FF453A"));
     }
 
     private boolean intentarConexion() {
@@ -290,7 +631,7 @@ public class PrioritariaApp extends Application {
             conexion.conectar();
             return true;
         } catch (IOException e) {
-            System.out.println("[PRIORITARIA] Sin conexion: " + e.getMessage());
+            System.out.println("[PRIORITARIA] Sin conexión: " + e.getMessage());
             return false;
         }
     }
