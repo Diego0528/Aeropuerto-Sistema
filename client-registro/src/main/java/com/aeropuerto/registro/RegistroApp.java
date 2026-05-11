@@ -96,6 +96,9 @@ public class RegistroApp extends Application {
     private ConexionServidor conexion;
     private Stage            primaryStage;
 
+    // ── NUEVO: referencia al badge para actualizarlo dinámicamente ────────────
+    private HBox connBadge;
+
     private TextField   campoDpi;
     private TextField   campoNombre;
     private TextField   campoFecha;
@@ -235,7 +238,17 @@ public class RegistroApp extends Application {
         reloj.setCycleCount(Animation.INDEFINITE);
         reloj.play();
 
-        HBox connBadge = construirBadgeConexion(conectado);
+        // ── NUEVO: guardar referencia al badge para actualizarlo dinámicamente
+        this.connBadge = construirBadgeConexion(conectado);
+
+        // ── NUEVO: Timeline que revisa el estado de conexión cada 3 segundos
+        // y actualiza el badge automáticamente sin reiniciar la app
+        Timeline estadoConexion = new Timeline(new KeyFrame(Duration.seconds(3), e -> {
+            boolean estaConectado = conexion.isConectado();
+            Platform.runLater(() -> actualizarBadgeConexion(estaConectado));
+        }));
+        estadoConexion.setCycleCount(Animation.INDEFINITE);
+        estadoConexion.play();
 
         HBox derecha = new HBox(18, lblFecha, lblHora, connBadge);
         derecha.setAlignment(Pos.CENTER_RIGHT);
@@ -272,6 +285,32 @@ public class RegistroApp extends Application {
                         "-fx-border-width: 1;"
         );
         return badge;
+    }
+
+    // ── NUEVO: actualiza el badge de conexión dinámicamente ───────────────────
+    // Se llama cada 3 segundos desde el Timeline en construirNav()
+    private void actualizarBadgeConexion(boolean conectado) {
+        connBadge.getChildren().clear();
+
+        Circle punto = new Circle(2.5, Color.web(conectado ? C_CONN_DOT : "#D70015"));
+        if (conectado) {
+            ScaleTransition p = new ScaleTransition(Duration.millis(1200), punto);
+            p.setFromX(1); p.setToX(1.6); p.setFromY(1); p.setToY(1.6);
+            p.setCycleCount(Animation.INDEFINITE); p.setAutoReverse(true); p.play();
+        }
+
+        Label lbl = new Label(conectado ? "Conectado" : "Sin conexión");
+        lbl.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+        lbl.setTextFill(Color.web(conectado ? C_CONN_T : "#D70015"));
+
+        connBadge.getChildren().addAll(punto, lbl);
+        connBadge.setStyle(
+                "-fx-background-color: " + (conectado ? C_CONN_BG : "#FFF0F0") + ";" +
+                        "-fx-border-color: " + (conectado ? C_CONN_BR : "#FF3B30") + ";" +
+                        "-fx-border-radius: 20;" +
+                        "-fx-background-radius: 20;" +
+                        "-fx-border-width: 1;"
+        );
     }
 
     // ── Zona DPI ──────────────────────────────────────────────────────────────
