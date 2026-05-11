@@ -99,4 +99,22 @@ public class TablaHash<K, V> {
     public int size() {
         return tamanio;
     }
+
+    /**
+     * Retorna todos los valores almacenados como arreglo de Object.
+     * El orden no está garantizado (depende del hash).
+     * El llamador debe hacer cast: (V) obtenerValores()[i]
+     */
+    public Object[] obtenerValores() {
+        Object[] resultado = new Object[tamanio];
+        int pos = 0;
+        for (int i = 0; i < tabla.length; i++) {
+            Nodo<K, V> nodo = tabla[i];
+            while (nodo != null) {
+                resultado[pos++] = nodo.valor;
+                nodo = nodo.siguiente;
+            }
+        }
+        return resultado;
+    }
 }

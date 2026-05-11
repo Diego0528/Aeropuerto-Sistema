@@ -572,6 +572,8 @@ public class GeneralApp extends Application {
     private boolean intentarConexion() {
         try {
             conexion.conectar();
+            String pc = java.net.InetAddress.getLocalHost().getHostName();
+            conexion.enviarYRecibir(Mensaje.identificar("GENERAL", pc));
             return true;
         } catch (IOException e) {
             System.out.println("[GENERAL] Sin conexión: " + e.getMessage());

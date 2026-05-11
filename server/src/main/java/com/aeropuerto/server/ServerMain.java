@@ -36,6 +36,11 @@ public class ServerMain {
             }
         }
 
+        // ── Inicializar sistema de monitoreo ANTES del primer println ────────
+        RegistroConexiones.getInstance();              // 1. Registro de conexiones
+        LogManager logManager = LogManager.getInstance(); // 2. Log manager
+        System.setOut(new LogInterceptor(System.out, logManager)); // 3. Interceptor
+
         System.out.println("╔══════════════════════════════════════════╗");
         System.out.println("║  AEROPUERTO GUATEMALA — SERVIDOR CENTRAL ║");
         System.out.println("╚══════════════════════════════════════════╝");
