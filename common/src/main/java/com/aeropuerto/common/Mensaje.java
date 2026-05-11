@@ -140,6 +140,42 @@ public class Mensaje {
     public static Mensaje ping() { return new Mensaje(TipoMensaje.PING); }
     public static Mensaje pong() { return new Mensaje(TipoMensaje.PONG); }
 
+    public static Mensaje identificar(String tipoCliente, String nombrePc) {
+        return new Mensaje(TipoMensaje.IDENTIFICAR, tipoCliente, nombrePc);
+    }
+
+    public static Mensaje identificarOk() {
+        return new Mensaje(TipoMensaje.IDENTIFICAR_OK);
+    }
+
+    /**
+     * Crea un mensaje LOG_ENTRY para enviar al monitor.
+     * El mensaje (último campo) puede contener '|' sin problema —
+     * el receptor reconstruye uniendo campos 4+ con '|'.
+     */
+    public static Mensaje logEntry(LogEntry entry) {
+        return new Mensaje(TipoMensaje.LOG_ENTRY,
+                String.valueOf(entry.getId()),
+                entry.getTimestamp(),
+                entry.getNivel().name(),
+                entry.getModulo(),
+                entry.getMensaje());
+    }
+
+    /**
+     * Crea un STATUS_UPDATE para notificar conexión/desconexión de un cliente.
+     * accion = "CONECTADO" | "DESCONECTADO"
+     */
+    public static Mensaje statusUpdate(String accion, ClienteInfo info) {
+        return new Mensaje(TipoMensaje.STATUS_UPDATE,
+                accion,
+                info.getIp(),
+                String.valueOf(info.getPuerto()),
+                info.getTipo().name(),
+                info.getNombrePc(),
+                info.getTimestamp());
+    }
+
     // ── toString ──────────────────────────────────────────────────────────────
 
     @Override

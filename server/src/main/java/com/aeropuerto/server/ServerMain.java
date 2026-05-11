@@ -1,23 +1,84 @@
 package com.aeropuerto.server;
 
-import com.aeropuerto.common.CommonPlaceholder;
+import java.io.*;
+import java.net.*;
 
 /**
- * Punto de entrada del Servidor Central.
+ * Punto de entrada del servidor central.
  *
- * RESPONSABILIDADES FUTURAS (Diego):
- *   - Abrir ServerSocket en puerto configurable
- *   - Gestionar hilos por conexión de cliente (ThreadPool o Thread-per-client)
- *   - Mantener el estado global: colas activas, tabla hash de pasajeros
- *   - Procesar mensajes del protocolo (TipoMensaje) y responder
+ * Responsabilidades:
+ *   1. Abrir un ServerSocket en el puerto configurado
+ *   2. Aceptar conexiones entrantes en loop infinito
+ *   3. Por cada conexión → crear un ClientHandler en un hilo nuevo
  *
- * Por ahora solo valida que el módulo common es accesible y compila.
+ * El servidor NO termina solo — corre hasta que lo cierras manualmente
+ * (Ctrl+C en terminal, o Stop en IntelliJ).
+ *
+ * PARA CORRER:
+ *   Desde IntelliJ: click derecho en ServerMain → Run
+ *   Con puerto custom: edita PUERTO abajo, o pásalo como argumento:
+ *     java -jar server.jar 6000
  */
 public class ServerMain {
 
+    // Puerto por defecto. Cambia aquí si hay conflicto en la red del laboratorio.
+    private static final int PUERTO_DEFAULT = 5000;
+
     public static void main(String[] args) {
-        System.out.println("=== " + CommonPlaceholder.version() + " ===");
-        System.out.println("[SERVER] Iniciando servidor de colas del aeropuerto...");
-        System.out.println("[SERVER] TODO: Implementar ServerSocket y lógica de colas.");
+        int puerto = PUERTO_DEFAULT;
+
+        // Permitir puerto como argumento: java -jar server.jar 6000
+        if (args.length > 0) {
+            try {
+                puerto = Integer.parseInt(args[0]);
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] Puerto inválido '" + args[0] + "'. Usando " + PUERTO_DEFAULT);
+            }
+        }
+
+        // ── Inicializar sistema de monitoreo ANTES del primer println ────────
+        RegistroConexiones.getInstance();              // 1. Registro de conexiones
+        LogManager logManager = LogManager.getInstance(); // 2. Log manager
+        System.setOut(new LogInterceptor(System.out, logManager)); // 3. Interceptor
+
+        System.out.println("╔══════════════════════════════════════════╗");
+        System.out.println("║  AEROPUERTO GUATEMALA — SERVIDOR CENTRAL ║");
+        System.out.println("╚══════════════════════════════════════════╝");
+        System.out.println("[SERVER] Iniciando en puerto " + puerto + "...");
+
+        // Pre-inicializar el gestor para detectar errores temprano
+        GestorColas.getInstance();
+        System.out.println("[SERVER] GestorColas inicializado OK");
+
+        try (ServerSocket serverSocket = new ServerSocket(puerto)) {
+            // SO_REUSEADDR: permite reiniciar el servidor rápido sin esperar
+            // que el OS libere el puerto (útil en demos y pruebas)
+            serverSocket.setReuseAddress(true);
+
+            System.out.println("[SERVER] Escuchando en puerto " + puerto);
+            System.out.println("[SERVER] IP local: " + InetAddress.getLocalHost().getHostAddress());
+            System.out.println("[SERVER] Esperando clientes... (Ctrl+C para detener)\n");
+
+            // Loop principal — corre para siempre
+            while (true) {
+                // accept() bloquea hasta que llega una conexión
+                Socket socketCliente = serverSocket.accept();
+
+                // Crear y lanzar hilo para este cliente
+                // El servidor vuelve a accept() inmediatamente — no bloquea
+                Thread hilo = new Thread(new ClientHandler(socketCliente));
+                hilo.setDaemon(true); // El hilo termina si el servidor se detiene
+                hilo.start();
+
+                System.out.println("[SERVER] Nueva conexión aceptada. Hilo iniciado.");
+            }
+
+        } catch (BindException e) {
+            System.out.println("[ERROR] El puerto " + puerto + " ya está en uso.");
+            System.out.println("        Cierra el proceso que lo usa o cambia PUERTO_DEFAULT en ServerMain.java");
+        } catch (IOException e) {
+            System.out.println("[ERROR] Error en el servidor: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

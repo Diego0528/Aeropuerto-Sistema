@@ -17,7 +17,7 @@ public class Pasajero {
     private EstadoPasajero estado;     // Cambia durante el ciclo de vida
     private int numeroCola;            // Número asignado al encolarse (1, 2, 3...)
 
-    // ── Constructor ──────────────────────────────────────────────────────────
+    // ── Constructores ─────────────────────────────────────────────────────────
     public Pasajero(String dpi, String nombre, TipoAtencion tipo) {
         if (dpi == null || dpi.isBlank())
             throw new IllegalArgumentException("El DPI no puede ser nulo o vacío");
@@ -29,8 +29,13 @@ public class Pasajero {
         this.dpi        = dpi.trim();
         this.nombre     = nombre.trim();
         this.tipo       = tipo;
-        this.estado     = EstadoPasajero.EN_ESPERA; // Estado inicial siempre
-        this.numeroCola = 0; // Se asigna cuando el servidor lo encola
+        this.estado     = EstadoPasajero.EN_ESPERA;
+        this.numeroCola = 0;
+    }
+
+    public Pasajero(String dpi, String nombre, TipoAtencion tipo, int numeroCola) {
+        this(dpi, nombre, tipo);
+        if (numeroCola >= 1) this.numeroCola = numeroCola;
     }
 
     // ── Getters ──────────────────────────────────────────────────────────────

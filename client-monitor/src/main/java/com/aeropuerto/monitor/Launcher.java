@@ -1,8 +1,7 @@
-package com.aeropuerto.registro;
-
+package com.aeropuerto.monitor;
 
 public class Launcher {
     public static void main(String[] args) {
-        RegistroApp.main(args);
+        MonitorApp.main(args);
     }
 }
