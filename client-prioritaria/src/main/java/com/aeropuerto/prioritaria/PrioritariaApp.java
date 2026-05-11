@@ -46,6 +46,7 @@ public class PrioritariaApp extends Application {
         "NK 505 — Fort Lauderdale",
         "VB 606 — Cancun",
         "TB 707 — San Jose, CR",
+
     };
 
     // Paleta de colores para fondo tipo cristal color Navy
