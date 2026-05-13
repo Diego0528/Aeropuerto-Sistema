@@ -24,15 +24,17 @@ import java.time.format.DateTimeFormatter;
 
 /**
  * Ventanilla operador — Cola General.
- * Llama al siguiente pasajero, confirma vuelo y registra observaciones.
  *
- * DISEÑO: Glassmorphism oscuro navy — misma plantilla que RegistroApp.
- * Acento verde Apple (#4CD964 / #30D158) — identidad de cola General.
+ * NUEVAS FUNCIONALIDADES:
+ *   - Tiempo de atención: se mide desde que el pasajero es llamado hasta FIN_ATENCION
+ *   - Bloqueo: no se puede llamar otro ticket si hay uno en atención activa
+ *   - Auto-reconexión: si el servidor se cae, intenta reconectar cada 5 segundos
+ *   - Errores específicos: causa real del error en lugar de mensaje genérico
  */
 public class GeneralApp extends Application {
 
-    private static final String HOST   = "localhost";
-    private static final int    PUERTO = 5000;
+    private static final String HOST   = com.aeropuerto.common.ConfigServidor.getInstance().getHost();
+    private static final int    PUERTO = com.aeropuerto.common.ConfigServidor.getInstance().getPuerto();
 
     private static final String[] VUELOS = {
         "AM 123 — Ciudad de Mexico",
@@ -69,6 +71,9 @@ public class GeneralApp extends Application {
     private ConexionServidor conexion;
     private String dpiActual = null;
 
+    // Momento en que se llamó al pasajero — para medir tiempo de atención
+    private long tiempoInicioAtencion = 0;
+
     private Label            labelTurno;
     private Label            labelNombre;
     private Label            labelEstado;
@@ -76,8 +81,12 @@ public class GeneralApp extends Application {
     private TextArea         campoObservaciones;
     private Button           botonLlamar;
     private Button           botonFinalizar;
+    private Label            lblAvatarInicial;
 
-    private Label lblAvatarInicial;
+    // Badge de conexión — lo guardamos para actualizarlo en los callbacks
+    private HBox  badgeConexion;
+    private Label lblBadgeTexto;
+    private Circle puntoBadge;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -89,6 +98,11 @@ public class GeneralApp extends Application {
         stage.setMinHeight(520);
 
         conexion = new ConexionServidor(HOST, PUERTO);
+
+        // Configurar callbacks de reconexión ANTES de conectar
+        conexion.setOnConexionPerdida(() -> Platform.runLater(this::marcarSinConexion));
+        conexion.setOnConexionRestaurada(() -> Platform.runLater(this::marcarConectado));
+
         boolean disponible = intentarConexion();
 
         VBox root = construirUI(disponible);
@@ -196,8 +210,8 @@ public class GeneralApp extends Application {
         reloj.setCycleCount(Animation.INDEFINITE);
         reloj.play();
 
-        HBox connBadge = construirBadgeConexion(disponible);
-        HBox derecha = new HBox(18, lblFecha, lblHora, connBadge);
+        badgeConexion = construirBadgeConexion(disponible);
+        HBox derecha = new HBox(18, lblFecha, lblHora, badgeConexion);
         derecha.setAlignment(Pos.CENTER_RIGHT);
 
         nav.getChildren().addAll(brand, derecha);
@@ -212,26 +226,60 @@ public class GeneralApp extends Application {
     }
 
     private HBox construirBadgeConexion(boolean conectado) {
-        Circle punto = new Circle(2.5, Color.web(C_CONN_DOT));
-        if (conectado) {
-            ScaleTransition p = new ScaleTransition(Duration.millis(1200), punto);
-            p.setFromX(1); p.setToX(1.6); p.setFromY(1); p.setToY(1.6);
-            p.setCycleCount(Animation.INDEFINITE); p.setAutoReverse(true); p.play();
-        }
-        Label lbl = new Label(conectado ? "Conectado" : "Sin conexión");
-        lbl.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
-        lbl.setTextFill(Color.web(conectado ? C_CONN_T : "#D70015"));
-        HBox badge = new HBox(5, punto, lbl);
-        badge.setAlignment(Pos.CENTER);
-        badge.setPadding(new Insets(4, 10, 4, 10));
-        badge.setStyle(
+        puntoBadge = new Circle(2.5, Color.web(conectado ? C_CONN_DOT : "#D70015"));
+        if (conectado) animarPunto(puntoBadge);
+
+        lblBadgeTexto = new Label(conectado ? "Conectado" : "Sin conexión");
+        lblBadgeTexto.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+        lblBadgeTexto.setTextFill(Color.web(conectado ? C_CONN_T : "#D70015"));
+
+        badgeConexion = new HBox(5, puntoBadge, lblBadgeTexto);
+        badgeConexion.setAlignment(Pos.CENTER);
+        badgeConexion.setPadding(new Insets(4, 10, 4, 10));
+        aplicarEstiloBadge(conectado);
+        return badgeConexion;
+    }
+
+    private void aplicarEstiloBadge(boolean conectado) {
+        if (badgeConexion == null) return;
+        badgeConexion.setStyle(
                 "-fx-background-color: " + (conectado ? C_CONN_BG : "rgba(215,0,21,0.10)") + ";" +
                 "-fx-border-color: " + (conectado ? C_CONN_BR : "rgba(215,0,21,0.40)") + ";" +
                 "-fx-border-radius: 20;" +
                 "-fx-background-radius: 20;" +
                 "-fx-border-width: 1;"
         );
-        return badge;
+    }
+
+    private void animarPunto(Circle punto) {
+        ScaleTransition p = new ScaleTransition(Duration.millis(1200), punto);
+        p.setFromX(1); p.setToX(1.6); p.setFromY(1); p.setToY(1.6);
+        p.setCycleCount(Animation.INDEFINITE); p.setAutoReverse(true); p.play();
+    }
+
+    /** Actualiza el badge a "Conectado" (desde el callback de reconexión). */
+    private void marcarConectado() {
+        if (puntoBadge != null) puntoBadge.setFill(Color.web(C_CONN_DOT));
+        if (lblBadgeTexto != null) {
+            lblBadgeTexto.setText("Conectado");
+            lblBadgeTexto.setTextFill(Color.web(C_CONN_T));
+        }
+        aplicarEstiloBadge(true);
+        // Rehabilitar botón llamar SOLO si no hay atención en curso
+        if (dpiActual == null && botonLlamar != null) botonLlamar.setDisable(false);
+        mostrarEstado("Conexión restaurada. Sistema listo.", true);
+    }
+
+    /** Actualiza el badge a "Sin conexión" (desde el callback de pérdida). */
+    private void marcarSinConexion() {
+        if (puntoBadge != null) puntoBadge.setFill(Color.web("#D70015"));
+        if (lblBadgeTexto != null) {
+            lblBadgeTexto.setText("Sin conexión");
+            lblBadgeTexto.setTextFill(Color.web("#D70015"));
+        }
+        aplicarEstiloBadge(false);
+        if (botonLlamar   != null) botonLlamar.setDisable(true);
+        mostrarEstado("Conexión perdida. Reconectando cada 5 segundos...", false);
     }
 
     // ── Strip pasajero ────────────────────────────────────────────────────────
@@ -336,7 +384,6 @@ public class GeneralApp extends Application {
         VBox col = new VBox(18);
         col.setPadding(new Insets(22, 28, 22, 28));
 
-        // Vuelo
         Label lblVuelo = secLabel("Vuelo confirmado");
         lblVuelo.setPadding(new Insets(0, 0, 8, 0));
         comboVuelo = new ComboBox<>();
@@ -348,7 +395,6 @@ public class GeneralApp extends Application {
         col.getChildren().add(new VBox(0, lblVuelo, comboVuelo));
         col.getChildren().add(separador());
 
-        // Observaciones
         Label lblObs = secLabel("Observaciones del operador");
         lblObs.setPadding(new Insets(0, 0, 8, 0));
         campoObservaciones = new TextArea();
@@ -386,7 +432,7 @@ public class GeneralApp extends Application {
         botonLlamar.setMaxWidth(Double.MAX_VALUE);
         botonLlamar.setStyle(estiloBtn());
         botonLlamar.setDisable(!disponible);
-        botonLlamar.setOnMouseEntered(e -> botonLlamar.setOpacity(0.85));
+        botonLlamar.setOnMouseEntered(e -> { if (!botonLlamar.isDisabled()) botonLlamar.setOpacity(0.85); });
         botonLlamar.setOnMouseExited(e  -> botonLlamar.setOpacity(1.0));
         botonLlamar.setOnMousePressed(e -> animPress(botonLlamar, true));
         botonLlamar.setOnMouseReleased(e -> animPress(botonLlamar, false));
@@ -485,9 +531,15 @@ public class GeneralApp extends Application {
         return tt;
     }
 
-    // ── Lógica original ───────────────────────────────────────────────────────
+    // ── Lógica principal ──────────────────────────────────────────────────────
 
     private void llamarSiguiente() {
+        // BLOQUEO: no llamar siguiente si hay una atención activa
+        if (dpiActual != null) {
+            mostrarEstado("Finaliza la atención actual antes de llamar al siguiente pasajero.", false);
+            return;
+        }
+
         botonLlamar.setDisable(true);
         mostrarEstado("Consultando cola...", true);
 
@@ -495,10 +547,15 @@ public class GeneralApp extends Application {
             try {
                 Mensaje resp = conexion.enviarYRecibir(Mensaje.llamarSiguiente(TipoAtencion.GENERAL));
                 Platform.runLater(() -> {
+                    botonLlamar.setDisable(false); // Rehabilitar si no hay pasajero
                     if (resp.getTipo() == TipoMensaje.PASAJERO_LLAMADO) {
                         dpiActual = resp.getCampo(0);
                         String nombre = resp.getCampo(1);
                         String turno  = resp.getCampo(2);
+
+                        // Iniciar cronómetro de atención
+                        tiempoInicioAtencion = System.currentTimeMillis();
+
                         labelTurno.setText("#" + turno);
                         labelNombre.setText(nombre);
                         comboVuelo.setDisable(false);
@@ -506,17 +563,27 @@ public class GeneralApp extends Application {
                         campoObservaciones.setDisable(false);
                         campoObservaciones.clear();
                         botonFinalizar.setDisable(false);
-                        mostrarEstado("Atendiendo: " + nombre + " | Turno #" + turno, true);
+
+                        // Bloquear llamar siguiente mientras hay atención en curso
+                        botonLlamar.setDisable(true);
+                        mostrarEstado("En atención: " + nombre + " | Turno #" + turno, true);
+
                     } else if (resp.getTipo() == TipoMensaje.COLA_VACIA) {
                         mostrarEstado("Cola General vacía. No hay pasajeros en espera.", false);
+                        botonLlamar.setDisable(false);
+
+                    } else if (resp.getTipo() == TipoMensaje.ERROR) {
+                        mostrarEstado("Error del servidor: " + resp.getCampo(0), false);
+                        botonLlamar.setDisable(false);
+
                     } else {
-                        mostrarEstado("Respuesta inesperada: " + resp.serializar(), false);
+                        mostrarEstado("Respuesta inesperada del servidor: " + resp.getTipo(), false);
+                        botonLlamar.setDisable(false);
                     }
-                    botonLlamar.setDisable(false);
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    mostrarEstado("Error de conexión: " + e.getMessage(), false);
+                    mostrarEstado(ConexionServidor.mensajeError(e), false);
                     botonLlamar.setDisable(false);
                 });
             }
@@ -525,28 +592,45 @@ public class GeneralApp extends Application {
 
     private void finalizarAtencion() {
         if (dpiActual == null) return;
+
+        // Calcular tiempo de atención transcurrido
+        long duracionSegundos = tiempoInicioAtencion > 0
+            ? (System.currentTimeMillis() - tiempoInicioAtencion) / 1000
+            : 0;
+
+        String vuelo = comboVuelo.getValue() != null ? comboVuelo.getValue() : "";
+        String obs   = campoObservaciones.getText().trim();
+
         botonFinalizar.setDisable(true);
         botonLlamar.setDisable(true);
 
-        System.out.println("[GENERAL] Finalizado — Vuelo: " + comboVuelo.getValue()
-            + " | Obs: " + campoObservaciones.getText().trim());
+        System.out.println("[GENERAL] Finalizado — Vuelo: " + vuelo
+            + " | Obs: " + obs + " | Duración: " + duracionSegundos + "s");
+
+        final String dpiParaEnviar = dpiActual; // capturar para el hilo
 
         new Thread(() -> {
             try {
-                Mensaje resp = conexion.enviarYRecibir(Mensaje.finAtencion(dpiActual));
+                Mensaje resp = conexion.enviarYRecibir(
+                    Mensaje.finAtencion(dpiParaEnviar, vuelo, obs, duracionSegundos)
+                );
                 Platform.runLater(() -> {
                     if (resp.getTipo() == TipoMensaje.CONFIRMACION) {
-                        mostrarEstado("Atención finalizada correctamente.", true);
-                    } else {
+                        String minutos = String.valueOf(duracionSegundos / 60);
+                        String segundos = String.format("%02d", duracionSegundos % 60);
+                        mostrarEstado("Atención finalizada — Duración: " + minutos + "m " + segundos + "s", true);
+                    } else if (resp.getTipo() == TipoMensaje.ERROR) {
                         mostrarEstado("Error al finalizar: " + resp.getCampo(0), false);
+                    } else {
+                        mostrarEstado("Respuesta inesperada al finalizar: " + resp.getTipo(), false);
                     }
                     limpiarPanel();
-                    botonLlamar.setDisable(false);
+                    botonLlamar.setDisable(!conexion.isConectado()); // rehabilitar si está conectado
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    mostrarEstado("Error de conexión: " + e.getMessage(), false);
-                    botonLlamar.setDisable(false);
+                    mostrarEstado(ConexionServidor.mensajeError(e), false);
+                    // En error de red: mantener estado para reintentar
                     botonFinalizar.setDisable(false);
                 });
             }
@@ -555,6 +639,7 @@ public class GeneralApp extends Application {
 
     private void limpiarPanel() {
         dpiActual = null;
+        tiempoInicioAtencion = 0;
         labelTurno.setText("—");
         labelNombre.setText("Ningún pasajero en atención");
         comboVuelo.setDisable(true);
@@ -571,10 +656,12 @@ public class GeneralApp extends Application {
 
     private boolean intentarConexion() {
         try {
-            conexion.conectar();
             String pc = java.net.InetAddress.getLocalHost().getHostName();
-            conexion.enviarYRecibir(Mensaje.identificar("GENERAL", pc));
+            conexion.conectarEIdentificar("GENERAL", pc);
             return true;
+        } catch (java.net.ConnectException e) {
+            System.out.println("[GENERAL] Servidor no encontrado: " + e.getMessage());
+            return false;
         } catch (IOException e) {
             System.out.println("[GENERAL] Sin conexión: " + e.getMessage());
             return false;

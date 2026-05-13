@@ -53,3 +53,9 @@ logs/
 *.tmp
 *.swp
 *.bak
+
+# ========================
+# Distribución empacada
+# ========================
+dist-beta/
+dependency-reduced-pom.xml

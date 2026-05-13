@@ -9,35 +9,52 @@ import java.util.function.Consumer;
 
 /**
  * Conexión persistente de streaming hacia el servidor (modo MONITOR).
- * Igual que el ConexionMonitor de client-logs pero se identifica como MONITOR.
+ * Mantiene el socket abierto, procesa mensajes en un hilo de fondo (push model)
+ * y reconecta automáticamente cada 5 segundos si se pierde la conexión.
  */
 public class ConexionMonitor {
+
+    private static final int REINTENTOS_CADA_MS = 5000;
 
     private Socket         socket;
     private BufferedReader entrada;
     private PrintWriter    salida;
-    private volatile boolean activo = false;
+    private volatile boolean activo              = false;
+    private volatile boolean intentandoReconectar = false;
+
+    private String reconectarHost;
+    private int    reconectarPuerto;
+    private String reconectarPc;
 
     private Consumer<LogEntry>  onLog;
     private Consumer<StatusMsg> onStatus;
     private Runnable            onDesconexion;
+    private Runnable            onConexionRestaurada;
 
     // ── Callbacks ─────────────────────────────────────────────────────────────
 
-    public void setOnLog(Consumer<LogEntry> cb)        { this.onLog = cb; }
-    public void setOnStatus(Consumer<StatusMsg> cb)    { this.onStatus = cb; }
-    public void setOnDesconexion(Runnable cb)          { this.onDesconexion = cb; }
+    public void setOnLog(Consumer<LogEntry> cb)              { this.onLog = cb; }
+    public void setOnStatus(Consumer<StatusMsg> cb)          { this.onStatus = cb; }
+    public void setOnDesconexion(Runnable cb)                { this.onDesconexion = cb; }
+    public void setOnConexionRestaurada(Runnable cb)         { this.onConexionRestaurada = cb; }
 
     // ── Conexión ──────────────────────────────────────────────────────────────
 
     public void conectar(String host, int puerto) throws IOException {
+        this.reconectarHost   = host;
+        this.reconectarPuerto = puerto;
+
+        try { reconectarPc = InetAddress.getLocalHost().getHostName(); }
+        catch (Exception e) { reconectarPc = "PC-Monitor"; }
+
+        abrirSocket(host, puerto, reconectarPc);
+    }
+
+    /** Abre el socket, identifica la sesión y arranca el hilo lector. */
+    private void abrirSocket(String host, int puerto, String pcName) throws IOException {
         socket  = new Socket(host, puerto);
         entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         salida  = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
-
-        String pcName;
-        try { pcName = InetAddress.getLocalHost().getHostName(); }
-        catch (Exception e) { pcName = "PC-Monitor"; }
 
         salida.println(Mensaje.identificar("MONITOR", pcName).serializar());
         entrada.readLine(); // IDENTIFICAR_OK
@@ -50,6 +67,7 @@ public class ConexionMonitor {
 
     public void desconectar() {
         activo = false;
+        intentandoReconectar = false;
         try { if (socket != null) socket.close(); } catch (IOException e) { /* ignore */ }
     }
 
@@ -68,10 +86,36 @@ public class ConexionMonitor {
                 procesarLinea(linea);
             }
         } catch (IOException e) {
-            if (activo && onDesconexion != null) onDesconexion.run();
+            // caída real del socket — distinguir del cierre intencional
         } finally {
-            activo = false;
+            if (activo) {
+                activo = false;
+                if (onDesconexion != null) try { onDesconexion.run(); } catch (Exception ignored) {}
+                iniciarReconexionAutomatica();
+            }
         }
+    }
+
+    private void iniciarReconexionAutomatica() {
+        if (intentandoReconectar || reconectarHost == null) return;
+        intentandoReconectar = true;
+        Thread hilo = new Thread(() -> {
+            while (!activo && intentandoReconectar) {
+                try { Thread.sleep(REINTENTOS_CADA_MS); } catch (InterruptedException e) { break; }
+                try {
+                    abrirSocket(reconectarHost, reconectarPuerto, reconectarPc);
+                    System.out.println("[MONITOR] Reconexión exitosa.");
+                    intentandoReconectar = false;
+                    if (onConexionRestaurada != null) try { onConexionRestaurada.run(); } catch (Exception ignored) {}
+                    return;
+                } catch (IOException e) {
+                    System.out.println("[MONITOR] Reintento fallido: " + e.getMessage());
+                }
+            }
+            intentandoReconectar = false;
+        }, "reconexion-monitor");
+        hilo.setDaemon(true);
+        hilo.start();
     }
 
     private void procesarLinea(String linea) {

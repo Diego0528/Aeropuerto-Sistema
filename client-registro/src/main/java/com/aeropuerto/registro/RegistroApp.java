@@ -44,8 +44,8 @@ import java.time.format.DateTimeFormatter;
  */
 public class RegistroApp extends Application {
 
-    private static final String HOST   = "localhost";
-    private static final int    PUERTO = 5000;
+    private static final String HOST   = com.aeropuerto.common.ConfigServidor.getInstance().getHost();
+    private static final int    PUERTO = com.aeropuerto.common.ConfigServidor.getInstance().getPuerto();
 
     // ── Paleta glass sobre fondo navy oscuro ─────────────────────────────────
     // rgba() SÍ funciona en JavaFX cuando el fondo padre es sólido y oscuro.
@@ -865,14 +865,18 @@ public class RegistroApp extends Application {
         if (dpi.isEmpty()) return;
 
         if (!dpi.matches("\\d{13}")) {
-            lblNotaDpi.setText("DPI inválido — debe tener exactamente 13 dígitos");
+            lblNotaDpi.setText("DPI inválido — debe tener exactamente 13 dígitos numéricos");
             lblNotaDpi.setTextFill(Color.web("#FF453A"));
             agitar(campoDpi);
             ocultarBanner();
             return;
         }
 
+        // ── Medir tiempo de búsqueda en RENAP ─────────────────────────────────
+        long inicioNs = System.nanoTime();
         CatalogoRENAP.DatosPersona datos = CatalogoRENAP.consultar(dpi);
+        long tiempoBusquedaMs = (System.nanoTime() - inicioNs) / 1_000_000;
+        // ─────────────────────────────────────────────────────────────────────
 
         if (datos != null) {
             // Calcular edad
@@ -903,7 +907,9 @@ public class RegistroApp extends Application {
                     : "Sin condición prioritaria";
             nombreDesdeRenap = true;
 
-            mostrarBanner(true, "Datos precargados automáticamente. Verifica antes de continuar.");
+            // Mostrar tiempo de búsqueda en el banner de éxito
+            mostrarBanner(true,
+                "Datos precargados automáticamente — búsqueda completada en " + tiempoBusquedaMs + " ms");
             lblNotaDpi.setText("");
 
             // Nota bajo tipos
@@ -914,13 +920,13 @@ public class RegistroApp extends Application {
             }
 
         } else {
-            // No encontrado
+            // No encontrado — mostrar tiempo de búsqueda también para dar feedback
             lblAvatarInicial.setText("?");
             lblPaxNombre.setText("DPI no encontrado");
             lblPaxSub.setText(dpi + " · No registrado en RENAP");
             limpiarDatos();
             ocultarBanner();
-            lblNotaDpi.setText("DPI no encontrado en RENAP — ingresa el nombre manualmente");
+            lblNotaDpi.setText("DPI no encontrado en RENAP (" + tiempoBusquedaMs + " ms) — ingresa el nombre manualmente");
             lblNotaDpi.setTextFill(Color.web("#FF9F0A"));
             ocultarAlertaTipo();
             if (campoNombreZone != null) { campoNombreZone.setVisible(true); campoNombreZone.setManaged(true); }
@@ -1046,7 +1052,7 @@ public class RegistroApp extends Application {
                 Platform.runLater(() -> {
                     botonRegistrar.setDisable(false);
                     botonRegistrar.setText("Generar ticket →");
-                    mostrarBanner(false, "Error de conexión: " + ex.getMessage());
+                    mostrarBanner(false, ConexionServidor.mensajeError(ex));
                 });
             }
         }).start();
@@ -1119,12 +1125,27 @@ public class RegistroApp extends Application {
 
     private boolean intentarConexion() {
         try {
-            conexion.conectar();
             String pc = java.net.InetAddress.getLocalHost().getHostName();
-            conexion.enviarYRecibir(Mensaje.identificar("REGISTRO", pc));
+
+            // Registrar callbacks de reconexión ANTES de conectar
+            conexion.setOnConexionPerdida(() -> javafx.application.Platform.runLater(() ->
+                mostrarBanner(false, "Conexión perdida con el servidor. Reconectando automáticamente...")));
+
+            conexion.setOnConexionRestaurada(() -> javafx.application.Platform.runLater(() -> {
+                ocultarBanner();
+                lblNotaDpi.setText("Conexión restaurada. El sistema está listo.");
+                lblNotaDpi.setTextFill(Color.web("#4CD964"));
+            }));
+
+            conexion.conectarEIdentificar("REGISTRO", pc);
             return true;
+        } catch (java.net.ConnectException e) {
+            System.out.println("[REGISTRO] Servidor no encontrado: " + e.getMessage());
+            mostrarBanner(false, "Servidor no accesible en " + HOST + ":" + PUERTO + ". Verifique que esté encendido.");
+            return false;
         } catch (IOException e) {
             System.out.println("[REGISTRO] Sin servidor: " + e.getMessage());
+            mostrarBanner(false, "Error al conectar: " + ConexionServidor.mensajeError(e));
             return false;
         }
     }

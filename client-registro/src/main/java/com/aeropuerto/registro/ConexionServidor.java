@@ -3,37 +3,85 @@ package com.aeropuerto.registro;
 import com.aeropuerto.common.Mensaje;
 
 import java.io.*;
+import java.net.ConnectException;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 
 /**
- * Maneja la conexión socket con el servidor central.
+ * Conexión socket con el servidor central.
  *
- * Cada cliente JavaFX tiene una instancia de esta clase.
- * Se conecta al iniciar la app y se desconecta al cerrarla.
+ * NUEVA FUNCIONALIDAD — Auto-reconexión:
+ *   Si la conexión se pierde (servidor caído o red inestable), esta clase
+ *   inicia automáticamente un hilo de reintento cada 5 segundos.
+ *   Los callbacks informan a la UI cuándo se pierde y cuándo se restaura.
  *
- * NOTA: Esta clase se puede copiar igual en client-general,
- * client-prioritaria y client-especial — solo cambia el paquete.
+ * USO:
+ *   ConexionServidor cs = new ConexionServidor(host, puerto);
+ *   cs.setOnConexionPerdida(() -> Platform.runLater(() -> marcarDesconectado()));
+ *   cs.setOnConexionRestaurada(() -> Platform.runLater(() -> marcarConectado()));
+ *   cs.conectarEIdentificar("REGISTRO", nombrePc);
  */
 public class ConexionServidor {
 
-    private Socket socket;
+    private static final int REINTENTOS_CADA_MS = 5000; // 5 segundos entre intentos
+
+    private Socket        socket;
     private BufferedReader entrada;
-    private PrintWriter salida;
+    private PrintWriter    salida;
+    private volatile boolean conectado = false;
 
     private final String host;
-    private final int puerto;
-    private boolean conectado = false;
+    private final int    puerto;
+
+    // Datos de identificación guardados para re-identificarse al reconectar
+    private String tipoCliente = "";
+    private String nombrePc    = "";
+
+    // Callbacks de UI — se llaman desde el hilo de reconexión (usa Platform.runLater al registrar)
+    private Runnable onConexionPerdida;
+    private Runnable onConexionRestaurada;
+
+    // Control del hilo de reconexión
+    private volatile boolean intentandoReconectar = false;
+
+    // ── Constructor ───────────────────────────────────────────────────────────
 
     public ConexionServidor(String host, int puerto) {
         this.host   = host;
         this.puerto = puerto;
     }
 
+    // ── Callbacks ─────────────────────────────────────────────────────────────
+
+    /** Se llama cuando la conexión se pierde inesperadamente. */
+    public void setOnConexionPerdida(Runnable callback) {
+        this.onConexionPerdida = callback;
+    }
+
+    /** Se llama cuando la reconexión automática tiene éxito. */
+    public void setOnConexionRestaurada(Runnable callback) {
+        this.onConexionRestaurada = callback;
+    }
+
     // ── Conexión ──────────────────────────────────────────────────────────────
 
     /**
-     * Abre la conexión con el servidor.
-     * @throws IOException si no puede conectar (servidor apagado, IP incorrecta, etc.)
+     * Abre el socket y se identifica con el servidor.
+     * Guarda el tipo y nombre para poder re-identificarse en reconexiones.
+     *
+     * @throws IOException si no puede conectar (lanza excepción específica al caller)
+     */
+    public void conectarEIdentificar(String tipo, String pc) throws IOException {
+        this.tipoCliente = tipo;
+        this.nombrePc    = pc;
+        conectar();
+        enviarYRecibir(Mensaje.identificar(tipo, pc)); // lanza IOException si falla
+    }
+
+    /**
+     * Abre la conexión con el servidor (sin identificar).
+     * Preferir conectarEIdentificar() para uso normal.
      */
     public void conectar() throws IOException {
         socket  = new Socket(host, puerto);
@@ -45,38 +93,129 @@ public class ConexionServidor {
 
     /**
      * Envía un mensaje al servidor y espera la respuesta.
-     * @param mensaje El mensaje a enviar
-     * @return La respuesta del servidor como Mensaje
-     * @throws IOException si la conexión se perdió
+     *
+     * Si la conexión se pierde, dispara el hilo de reconexión automática
+     * y lanza la excepción apropiada para que el caller la muestre en la UI.
+     *
+     * @throws ConnectException       si el servidor no está disponible
+     * @throws SocketTimeoutException si el servidor no respondió a tiempo
+     * @throws SocketException        si la conexión fue interrumpida
+     * @throws IOException            para cualquier otro error de red
      */
     public Mensaje enviarYRecibir(Mensaje mensaje) throws IOException {
-        if (!conectado)
-            throw new IllegalStateException("No hay conexión con el servidor");
+        if (!conectado) {
+            throw new SocketException("Sin conexión con el servidor. Reconectando...");
+        }
 
-        // Enviar
-        salida.println(mensaje.serializar());
-
-        // Esperar respuesta (readLine bloquea hasta que llega)
-        String respuesta = entrada.readLine();
-        if (respuesta == null)
-            throw new IOException("El servidor cerró la conexión");
-
-        return Mensaje.deserializar(respuesta);
-    }
-
-    // ── Desconexión ───────────────────────────────────────────────────────────
-
-    public void desconectar() {
         try {
-            conectado = false;
-            if (entrada != null) entrada.close();
-            if (salida  != null) salida.close();
-            if (socket  != null && !socket.isClosed()) socket.close();
-            System.out.println("[CONEXION] Desconectado del servidor");
+            salida.println(mensaje.serializar());
+            String respuesta = entrada.readLine();
+            if (respuesta == null) {
+                throw new SocketException("El servidor cerró la conexión inesperadamente.");
+            }
+            return Mensaje.deserializar(respuesta);
+
         } catch (IOException e) {
-            System.out.println("[CONEXION] Error al desconectar: " + e.getMessage());
+            // La conexión se perdió — iniciar reconexión automática
+            conectado = false;
+            iniciarReconexionAutomatica();
+            throw e; // Re-lanzar para que el caller muestre el error en la UI
         }
     }
 
+    // ── Reconexión automática ─────────────────────────────────────────────────
+
+    private void iniciarReconexionAutomatica() {
+        if (intentandoReconectar) return; // Ya hay un hilo de reconexión activo
+        intentandoReconectar = true;
+
+        // Notificar a la UI que se perdió la conexión
+        if (onConexionPerdida != null) {
+            try { onConexionPerdida.run(); }
+            catch (Exception e) { /* ignorar errores en callbacks de UI */ }
+        }
+
+        Thread hiloReconexion = new Thread(() -> {
+            System.out.println("[CONEXION] Iniciando reconexión automática a " + host + ":" + puerto + "...");
+
+            while (!conectado && !Thread.currentThread().isInterrupted()) {
+                try {
+                    Thread.sleep(REINTENTOS_CADA_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+
+                try {
+                    conectar(); // Abre nuevo socket
+
+                    // Re-identificarse si tenemos datos de identificación
+                    if (!tipoCliente.isEmpty()) {
+                        enviarYRecibir(Mensaje.identificar(tipoCliente, nombrePc));
+                    }
+
+                    // ¡Reconexión exitosa!
+                    System.out.println("[CONEXION] Reconexión exitosa a " + host + ":" + puerto);
+                    intentandoReconectar = false;
+
+                    if (onConexionRestaurada != null) {
+                        try { onConexionRestaurada.run(); }
+                        catch (Exception e) { /* ignorar */ }
+                    }
+                    return; // Salir del hilo
+
+                } catch (IOException e) {
+                    System.out.println("[CONEXION] Reintento fallido: " + mensajeError(e));
+                }
+            }
+
+            intentandoReconectar = false;
+        }, "reconexion-" + tipoCliente);
+
+        hiloReconexion.setDaemon(true);
+        hiloReconexion.start();
+    }
+
+    // ── Desconexión intencional ───────────────────────────────────────────────
+
+    /**
+     * Cierra la conexión limpiamente (por ejemplo, al cerrar la ventana).
+     * Detiene también el hilo de reconexión si estaba activo.
+     */
+    public void desconectar() {
+        conectado             = false;
+        intentandoReconectar  = false; // Detener intentos de reconexión
+        cerrarSocket();
+        System.out.println("[CONEXION] Desconectado del servidor.");
+    }
+
+    private void cerrarSocket() {
+        try {
+            if (entrada != null) entrada.close();
+            if (salida  != null) salida.close();
+            if (socket  != null && !socket.isClosed()) socket.close();
+        } catch (IOException e) {
+            System.out.println("[CONEXION] Error menor al cerrar: " + e.getMessage());
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
     public boolean isConectado() { return conectado; }
+
+    /**
+     * Convierte una IOException en un mensaje legible para el operador.
+     * Identifica el tipo de error para dar contexto real en la UI.
+     */
+    public static String mensajeError(IOException e) {
+        if (e instanceof ConnectException) {
+            return "Servidor no accesible. Verifique que el servidor esté encendido.";
+        } else if (e instanceof SocketTimeoutException) {
+            return "Sin respuesta del servidor. Tiempo de espera agotado.";
+        } else if (e instanceof SocketException) {
+            return "Conexión con el servidor interrumpida: " + e.getMessage();
+        } else {
+            return "Error de red: " + e.getMessage();
+        }
+    }
 }

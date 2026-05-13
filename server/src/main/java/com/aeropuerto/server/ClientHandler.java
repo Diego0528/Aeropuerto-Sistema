@@ -11,21 +11,21 @@ import java.net.Socket;
  *
  * Ciclo de vida:
  *   1. Cliente se conecta → ServerMain crea new ClientHandler(socket) y lo inicia
- *   2. ClientHandler lee el primer mensaje para identificar al cliente (IDENTIFICAR)
- *   3a. Si es monitor (LOGS/MONITOR): entra en modo push — el servidor le empuja eventos
- *   3b. Si es cliente operativo: loop normal de request-response
- *   4. Cuando el socket cierra → el hilo termina solo
+ *   2. ClientHandler lee el primer mensaje → identifica al cliente (IDENTIFICAR)
+ *   3a. Si es monitor (LOGS/MONITOR): modo push — servidor empuja eventos
+ *   3b. Si es cliente operativo: loop request-response
+ *   4. Socket cierra → hilo termina
  */
 public class ClientHandler implements Runnable {
 
-    private final Socket     socket;
+    private final Socket      socket;
     private final GestorColas gestor;
-    private final String     clienteId;
+    private final String      clienteId;
 
     private BufferedReader entrada;
     private PrintWriter    salida;
 
-    private ClienteInfo infoRegistrada = null; // null si no envió IDENTIFICAR
+    private ClienteInfo infoRegistrada = null;
 
     public ClientHandler(Socket socket) {
         this.socket    = socket;
@@ -46,21 +46,19 @@ public class ClientHandler implements Runnable {
             String primeraLinea = entrada.readLine();
             if (primeraLinea == null) return; // desconexión inmediata
 
-            // Intentar leer identificación
             ClienteInfo info = intentarIdentificar(primeraLinea);
 
             if (info != null && info.esMonitor()) {
                 manejarMonitor(info);
             } else if (info != null) {
-                // Cliente operativo identificado — loop normal (primera línea ya procesada)
-                loopNormal(null);
+                loopNormal(null); // identificación ya procesada
             } else {
-                // Sin IDENTIFICAR (compatibilidad hacia atrás) — procesar primera línea como mensaje
-                loopNormal(primeraLinea);
+                loopNormal(primeraLinea); // sin IDENTIFICAR — procesar como mensaje
             }
 
         } catch (IOException e) {
-            System.out.println("[HANDLER] Cliente desconectado abruptamente: " + clienteId);
+            System.out.println("[HANDLER] Cliente desconectado abruptamente: " + clienteId
+                + " | Causa: " + e.getMessage());
         } finally {
             if (infoRegistrada != null) {
                 RegistroConexiones.getInstance().eliminarCliente(clienteId);
@@ -73,10 +71,6 @@ public class ClientHandler implements Runnable {
 
     // ── Identificación ────────────────────────────────────────────────────────
 
-    /**
-     * Intenta parsear una línea como IDENTIFICAR.
-     * @return ClienteInfo si era IDENTIFICAR, null si era otro tipo de mensaje
-     */
     private ClienteInfo intentarIdentificar(String linea) {
         try {
             Mensaje msg = Mensaje.deserializar(linea);
@@ -89,9 +83,10 @@ public class ClientHandler implements Runnable {
             try { tipo = ClienteInfo.TipoCliente.valueOf(tipoStr); }
             catch (Exception e) { tipo = ClienteInfo.TipoCliente.DESCONOCIDO; }
 
-            String ip     = socket.getInetAddress().getHostAddress();
-            int    puerto = socket.getPort();
-            ClienteInfo info = new ClienteInfo(ip, puerto, tipo, nombrePc);
+            ClienteInfo info = new ClienteInfo(
+                socket.getInetAddress().getHostAddress(),
+                socket.getPort(), tipo, nombrePc
+            );
 
             salida.println(Mensaje.identificarOk().serializar());
 
@@ -102,52 +97,36 @@ public class ClientHandler implements Runnable {
             return info;
 
         } catch (Exception e) {
-            return null; // No era IDENTIFICAR
+            return null; // No era IDENTIFICAR — procesamos como mensaje normal
         }
     }
 
     // ── Modo cliente operativo ────────────────────────────────────────────────
 
     private void loopNormal(String pendiente) throws IOException {
-        // Procesar mensaje pendiente (primera línea si no era IDENTIFICAR)
         if (pendiente != null) {
-            System.out.println("[HANDLER] Recibido de " + clienteId + ": " + pendiente);
             Mensaje resp = procesar(pendiente);
-            if (resp != null) {
-                salida.println(resp.serializar());
-                System.out.println("[HANDLER] Enviado a " + clienteId + ": " + resp.serializar());
-            }
+            if (resp != null) salida.println(resp.serializar());
         }
 
-        // Loop principal
         String linea;
         while ((linea = entrada.readLine()) != null) {
-            System.out.println("[HANDLER] Recibido de " + clienteId + ": " + linea);
             Mensaje resp = procesar(linea);
-            if (resp != null) {
-                String texto = resp.serializar();
-                salida.println(texto);
-                System.out.println("[HANDLER] Enviado a " + clienteId + ": " + texto);
-            }
+            if (resp != null) salida.println(resp.serializar());
         }
     }
 
     // ── Modo monitor (push) ───────────────────────────────────────────────────
 
     private void manejarMonitor(ClienteInfo info) {
-        RegistroConexiones registro = RegistroConexiones.getInstance();
-        LogManager logManager = LogManager.getInstance();
+        RegistroConexiones registro  = RegistroConexiones.getInstance();
+        LogManager         logManager = LogManager.getInstance();
 
-        // Registrar monitor — envía estado actual de conexiones al nuevo monitor
         registro.registrarMonitor(clienteId, info, salida);
-
-        // Enviar historial de logs (ráfaga inicial)
         logManager.empujarHistorialA(salida);
 
         System.out.println("[HANDLER] Monitor activo: " + clienteId + " [" + info.getTipo() + "]");
 
-        // Mantener conexión viva — esperar a que el monitor se desconecte
-        // (el servidor empujará eventos asíncronamente a través de 'salida')
         try {
             String linea;
             while ((linea = entrada.readLine()) != null) {
@@ -156,7 +135,7 @@ public class ClientHandler implements Runnable {
                     if (msg.getTipo() == TipoMensaje.PING) {
                         salida.println(Mensaje.pong().serializar());
                     }
-                } catch (Exception e) { /* ignorar mensajes malformados del monitor */ }
+                } catch (Exception e) { /* ignorar mensajes malformados */ }
             }
         } catch (IOException e) {
             // Normal — monitor cerró la ventana
@@ -173,8 +152,7 @@ public class ClientHandler implements Runnable {
         try {
             mensaje = Mensaje.deserializar(lineaRecibida);
         } catch (IllegalArgumentException e) {
-            System.out.println("[HANDLER] Mensaje inválido de " + clienteId + ": " + e.getMessage());
-            return Mensaje.error("Mensaje malformado: " + e.getMessage());
+            return Mensaje.error("Mensaje inválido recibido — causa: " + e.getMessage());
         }
 
         return switch (mensaje.getTipo()) {
@@ -185,8 +163,10 @@ public class ClientHandler implements Runnable {
                     String nombre = mensaje.getCampo(1);
                     TipoAtencion tipo = TipoAtencion.valueOf(mensaje.getCampo(2));
                     yield gestor.registrarPasajero(dpi, nombre, tipo);
+                } catch (IllegalArgumentException e) {
+                    yield Mensaje.error("Tipo de atención inválido en REGISTRO: " + e.getMessage());
                 } catch (Exception e) {
-                    yield Mensaje.error("REGISTRO mal formado: " + e.getMessage());
+                    yield Mensaje.error("Error al procesar REGISTRO: " + e.getMessage());
                 }
             }
 
@@ -194,26 +174,38 @@ public class ClientHandler implements Runnable {
                 try {
                     TipoAtencion tipo = TipoAtencion.valueOf(mensaje.getCampo(0));
                     yield gestor.llamarSiguiente(tipo);
+                } catch (IllegalArgumentException e) {
+                    yield Mensaje.error("Tipo de cola inválido en LLAMAR_SIGUIENTE: " + e.getMessage());
                 } catch (Exception e) {
-                    yield Mensaje.error("LLAMAR_SIGUIENTE mal formado: " + e.getMessage());
+                    yield Mensaje.error("Error al procesar LLAMAR_SIGUIENTE: " + e.getMessage());
                 }
             }
 
             case FIN_ATENCION -> {
                 try {
-                    String dpi = mensaje.getCampo(0);
-                    yield gestor.finalizarAtencion(dpi);
+                    String dpi  = mensaje.getCampo(0);
+                    // Campos opcionales con valores por defecto si no se envían
+                    String vuelo = mensaje.getCantidadCampos() > 1 ? mensaje.getCampo(1) : "";
+                    String obs   = mensaje.getCantidadCampos() > 2 ? mensaje.getCampo(2) : "";
+                    long durSeg  = 0;
+                    if (mensaje.getCantidadCampos() > 3) {
+                        try { durSeg = Long.parseLong(mensaje.getCampo(3)); }
+                        catch (NumberFormatException e) { durSeg = 0; }
+                    }
+                    yield gestor.finalizarAtencion(dpi, vuelo, obs, durSeg);
                 } catch (Exception e) {
-                    yield Mensaje.error("FIN_ATENCION mal formado: " + e.getMessage());
+                    yield Mensaje.error("Error al procesar FIN_ATENCION: " + e.getMessage());
                 }
             }
 
             case PING -> Mensaje.pong();
 
-            // IDENTIFICAR ya fue procesado antes de entrar a este loop
-            case IDENTIFICAR -> null;
+            case IDENTIFICAR -> null; // ya fue procesado antes del loop
 
-            default -> Mensaje.error("El servidor no maneja mensajes de tipo: " + mensaje.getTipo());
+            default -> Mensaje.error(
+                "El servidor no reconoce el tipo de mensaje: " + mensaje.getTipo() +
+                ". Tipos soportados: REGISTRO, LLAMAR_SIGUIENTE, FIN_ATENCION, PING, IDENTIFICAR."
+            );
         };
     }
 
@@ -225,8 +217,7 @@ public class ClientHandler implements Runnable {
             if (salida  != null) salida.close();
             if (socket  != null && !socket.isClosed()) socket.close();
         } catch (IOException e) {
-            System.out.println("[HANDLER] Error al cerrar conexión: " + e.getMessage());
+            System.out.println("[HANDLER] Error menor al cerrar conexión " + clienteId + ": " + e.getMessage());
         }
-        System.out.println("[HANDLER] Conexión cerrada: " + clienteId);
     }
 }

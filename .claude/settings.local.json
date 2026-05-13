@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(cat)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(java -version)",
+      "Bash(jpackage --version)",
+      "Bash(mvn -version)",
+      "PowerShell(Test-NetConnection *)"
     ]
   }
 }

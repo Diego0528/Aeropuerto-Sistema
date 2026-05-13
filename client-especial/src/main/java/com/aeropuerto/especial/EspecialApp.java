@@ -32,8 +32,8 @@ import java.time.format.DateTimeFormatter;
  */
 public class EspecialApp extends Application {
 
-    private static final String HOST   = "localhost";
-    private static final int    PUERTO = 5000;
+    private static final String HOST   = com.aeropuerto.common.ConfigServidor.getInstance().getHost();
+    private static final int    PUERTO = com.aeropuerto.common.ConfigServidor.getInstance().getPuerto();
 
     private static final String[] VUELOS = {
         "AM 123 — Ciudad de Mexico",
@@ -78,6 +78,7 @@ public class EspecialApp extends Application {
     // ── Estado ────────────────────────────────────────────────────────────────
     private ConexionServidor conexion;
     private String dpiActual = null;
+    private long   tiempoInicioAtencion = 0;
 
     private Label            labelTurno;
     private Label            labelNombre;
@@ -93,7 +94,10 @@ public class EspecialApp extends Application {
     private Button           botonLlamar;
     private Button           botonFinalizar;
 
-    private Label lblAvatarInicial;
+    private Label  lblAvatarInicial;
+    private HBox   badgeConexion;
+    private Label  lblBadgeTexto;
+    private Circle puntoBadge;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -127,7 +131,6 @@ public class EspecialApp extends Application {
     // ── Raíz ─────────────────────────────────────────────────────────────────
 
     private VBox construirUI(boolean disponible) {
-        // Inicializar CheckBoxes (no se agregan al scene graph directamente)
         cbSalaVip             = new CheckBox("Acceso Sala VIP");
         cbBoardingPrioritario = new CheckBox("Boarding prioritario");
         cbMenuEspecial        = new CheckBox("Menú especial a bordo");
@@ -149,7 +152,6 @@ public class EspecialApp extends Application {
         VBox.setVgrow(app, Priority.ALWAYS);
         VBox.setMargin(app, new Insets(35, 56, 35, 56));
 
-        // beneficios VBox creado aquí y pasado a ambas columnas
         VBox beneficios = new VBox(6);
         beneficios.setDisable(true);
         beneficios.getChildren().addAll(
@@ -196,7 +198,6 @@ public class EspecialApp extends Application {
         brandName.setTextFill(Color.web(T_MED));
         brandName.setStyle("-fx-letter-spacing: 1.8px;");
 
-        // Badge VIP con dorado — personalidad exclusiva
         Label queueBadge = new Label("✦  VIP");
         queueBadge.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         queueBadge.setTextFill(Color.web(VIP_T));
@@ -225,8 +226,8 @@ public class EspecialApp extends Application {
         reloj.setCycleCount(Animation.INDEFINITE);
         reloj.play();
 
-        HBox connBadge = construirBadgeConexion(disponible);
-        HBox derecha = new HBox(18, lblFecha, lblHora, connBadge);
+        badgeConexion = construirBadgeConexion(disponible);
+        HBox derecha = new HBox(18, lblFecha, lblHora, badgeConexion);
         derecha.setAlignment(Pos.CENTER_RIGHT);
 
         nav.getChildren().addAll(brand, derecha);
@@ -241,16 +242,16 @@ public class EspecialApp extends Application {
     }
 
     private HBox construirBadgeConexion(boolean conectado) {
-        Circle punto = new Circle(2.5, Color.web(C_CONN_DOT));
+        puntoBadge = new Circle(2.5, Color.web(conectado ? C_CONN_DOT : "#D70015"));
         if (conectado) {
-            ScaleTransition p = new ScaleTransition(Duration.millis(1200), punto);
+            ScaleTransition p = new ScaleTransition(Duration.millis(1200), puntoBadge);
             p.setFromX(1); p.setToX(1.6); p.setFromY(1); p.setToY(1.6);
             p.setCycleCount(Animation.INDEFINITE); p.setAutoReverse(true); p.play();
         }
-        Label lbl = new Label(conectado ? "Conectado" : "Sin conexión");
-        lbl.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
-        lbl.setTextFill(Color.web(conectado ? C_CONN_T : "#D70015"));
-        HBox badge = new HBox(5, punto, lbl);
+        lblBadgeTexto = new Label(conectado ? "Conectado" : "Sin conexión");
+        lblBadgeTexto.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+        lblBadgeTexto.setTextFill(Color.web(conectado ? C_CONN_T : "#D70015"));
+        HBox badge = new HBox(5, puntoBadge, lblBadgeTexto);
         badge.setAlignment(Pos.CENTER);
         badge.setPadding(new Insets(4, 10, 4, 10));
         badge.setStyle(
@@ -263,11 +264,40 @@ public class EspecialApp extends Application {
         return badge;
     }
 
+    private void marcarConectado() {
+        lblBadgeTexto.setText("Conectado");
+        lblBadgeTexto.setTextFill(Color.web(C_CONN_T));
+        puntoBadge.setFill(Color.web(C_CONN_DOT));
+        badgeConexion.setStyle(
+                "-fx-background-color: " + C_CONN_BG + ";" +
+                "-fx-border-color: " + C_CONN_BR + ";" +
+                "-fx-border-radius: 20;" +
+                "-fx-background-radius: 20;" +
+                "-fx-border-width: 1;"
+        );
+        botonLlamar.setDisable(false);
+        mostrarEstado("Conexión restaurada con el servidor.", true);
+    }
+
+    private void marcarSinConexion() {
+        lblBadgeTexto.setText("Sin conexión");
+        lblBadgeTexto.setTextFill(Color.web("#D70015"));
+        puntoBadge.setFill(Color.web("#D70015"));
+        badgeConexion.setStyle(
+                "-fx-background-color: rgba(215,0,21,0.10);" +
+                "-fx-border-color: rgba(215,0,21,0.40);" +
+                "-fx-border-radius: 20;" +
+                "-fx-background-radius: 20;" +
+                "-fx-border-width: 1;"
+        );
+        botonLlamar.setDisable(true);
+        mostrarEstado("Sin conexión al servidor. Reconectando automáticamente...", false);
+    }
+
     // ── Strip pasajero VIP ────────────────────────────────────────────────────
 
     private VBox construirPaxStrip() {
         VBox zona = new VBox(0);
-        // Toque dorado: borde inferior dorado en lugar del blanco estándar
         zona.setStyle(
                 "-fx-background-color: rgba(0,0,0,0.12);" +
                 "-fx-border-color: " + VIP_BR + ";" +
@@ -286,7 +316,6 @@ public class EspecialApp extends Application {
         StackPane avatar = new StackPane(lblAvatarInicial);
         avatar.setPrefSize(50, 50);
         avatar.setMinSize(50, 50);
-        // Avatar con doble acento: borde dorado sobre fondo azul translúcido
         avatar.setStyle(
                 "-fx-background-color: " + ACC_BG + ";" +
                 "-fx-border-color: " + VIP_BR + ";" +
@@ -370,7 +399,6 @@ public class EspecialApp extends Application {
         VBox col = new VBox(18);
         col.setPadding(new Insets(22, 28, 22, 28));
 
-        // Vuelo
         Label lblVuelo = secLabel("Vuelo");
         lblVuelo.setPadding(new Insets(0, 0, 8, 0));
         comboVuelo = new ComboBox<>();
@@ -382,7 +410,6 @@ public class EspecialApp extends Application {
         col.getChildren().add(new VBox(0, lblVuelo, comboVuelo));
         col.getChildren().add(separador());
 
-        // Clase
         Label lblClase = secLabel("Clase de vuelo");
         lblClase.setPadding(new Insets(0, 0, 8, 0));
         comboClase = new ComboBox<>();
@@ -394,7 +421,6 @@ public class EspecialApp extends Application {
         col.getChildren().add(new VBox(0, lblClase, comboClase));
         col.getChildren().add(separador());
 
-        // Asiento
         Label lblAsiento = secLabel("Número de asiento");
         lblAsiento.setPadding(new Insets(0, 0, 8, 0));
         campoAsiento = new TextField();
@@ -415,7 +441,6 @@ public class EspecialApp extends Application {
         col.setMinWidth(320);
         col.setStyle("-fx-background-color: rgba(0,0,0,0.10);");
 
-        // Encabezado de beneficios con acento dorado
         Label lblBen = secLabel("Beneficios VIP ✦");
         lblBen.setTextFill(Color.web("rgba(212,175,55,0.65)"));
         col.getChildren().add(lblBen);
@@ -581,9 +606,15 @@ public class EspecialApp extends Application {
         return tt;
     }
 
-    // ── Lógica original ───────────────────────────────────────────────────────
+    // ── Lógica ────────────────────────────────────────────────────────────────
 
     private void llamarSiguiente(VBox beneficios) {
+        // Bloquear si hay una atención activa — no se puede llamar hasta finalizar
+        if (dpiActual != null) {
+            mostrarEstado("Finaliza la atención del pasajero actual antes de llamar a otro.", false);
+            return;
+        }
+
         botonLlamar.setDisable(true);
         mostrarEstado("Consultando cola VIP...", true);
 
@@ -595,6 +626,7 @@ public class EspecialApp extends Application {
                         dpiActual = resp.getCampo(0);
                         String nombre = resp.getCampo(1);
                         String turno  = resp.getCampo(2);
+                        tiempoInicioAtencion = System.currentTimeMillis();
                         labelTurno.setText("#" + turno);
                         labelNombre.setText(nombre);
                         comboVuelo.setDisable(false);
@@ -606,17 +638,19 @@ public class EspecialApp extends Application {
                         beneficios.setDisable(false);
                         limpiarBeneficios();
                         botonFinalizar.setDisable(false);
+                        // botonLlamar permanece deshabilitado hasta que se finalice la atención
                         mostrarEstado("Atendiendo VIP: " + nombre + " | Turno #" + turno, true);
                     } else if (resp.getTipo() == TipoMensaje.COLA_VACIA) {
                         mostrarEstado("Cola VIP vacía. No hay pasajeros en espera.", false);
+                        botonLlamar.setDisable(false);
                     } else {
-                        mostrarEstado("Respuesta inesperada: " + resp.serializar(), false);
+                        mostrarEstado("Error: " + resp.getCampo(0), false);
+                        botonLlamar.setDisable(false);
                     }
-                    botonLlamar.setDisable(false);
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    mostrarEstado("Error de conexión: " + e.getMessage(), false);
+                    mostrarEstado(ConexionServidor.mensajeError(e), false);
                     botonLlamar.setDisable(false);
                 });
             }
@@ -628,18 +662,36 @@ public class EspecialApp extends Application {
         botonFinalizar.setDisable(true);
         botonLlamar.setDisable(true);
 
-        System.out.println("[ESPECIAL] Finalizado — Vuelo: " + comboVuelo.getValue()
-            + " | Clase: " + comboClase.getValue()
-            + " | Asiento: " + campoAsiento.getText()
-            + " | SalaVIP:" + cbSalaVip.isSelected()
-            + " | Boarding:" + cbBoardingPrioritario.isSelected());
+        long duracionSegundos = tiempoInicioAtencion > 0
+                ? (System.currentTimeMillis() - tiempoInicioAtencion) / 1000
+                : 0;
+
+        String vuelo = comboVuelo.getValue() != null ? comboVuelo.getValue() : "";
+
+        // Combinar clase, asiento y beneficios activos en observaciones
+        StringBuilder obs = new StringBuilder();
+        String clase   = comboClase.getValue() != null ? comboClase.getValue() : "";
+        String asiento = campoAsiento.getText() != null ? campoAsiento.getText().trim() : "";
+        if (!clase.isEmpty())   { obs.append("Clase: ").append(clase); }
+        if (!asiento.isEmpty()) { if (obs.length() > 0) obs.append(" | "); obs.append("Asiento: ").append(asiento); }
+        if (cbSalaVip.isSelected())             { if (obs.length() > 0) obs.append(" | "); obs.append("SalaVIP"); }
+        if (cbBoardingPrioritario.isSelected()) { if (obs.length() > 0) obs.append(" | "); obs.append("BoardingPrioritario"); }
+        if (cbMenuEspecial.isSelected())        { if (obs.length() > 0) obs.append(" | "); obs.append("MenuEspecial"); }
+        if (cbEquipajeExtra.isSelected())       { if (obs.length() > 0) obs.append(" | "); obs.append("EquipajeExtra"); }
+        if (cbFastTrack.isSelected())           { if (obs.length() > 0) obs.append(" | "); obs.append("FastTrack"); }
+
+        final String dpi = dpiActual;
+        final long   dur = duracionSegundos;
 
         new Thread(() -> {
             try {
-                Mensaje resp = conexion.enviarYRecibir(Mensaje.finAtencion(dpiActual));
+                Mensaje resp = conexion.enviarYRecibir(
+                        Mensaje.finAtencion(dpi, vuelo, obs.toString(), dur));
                 Platform.runLater(() -> {
                     if (resp.getTipo() == TipoMensaje.CONFIRMACION) {
-                        mostrarEstado("Atención VIP finalizada correctamente.", true);
+                        long min = dur / 60;
+                        long seg = dur % 60;
+                        mostrarEstado("Atención VIP finalizada. Duración: " + min + "m " + seg + "s", true);
                     } else {
                         mostrarEstado("Error al finalizar: " + resp.getCampo(0), false);
                     }
@@ -648,7 +700,7 @@ public class EspecialApp extends Application {
                 });
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    mostrarEstado("Error de conexión: " + e.getMessage(), false);
+                    mostrarEstado(ConexionServidor.mensajeError(e), false);
                     botonLlamar.setDisable(false);
                     botonFinalizar.setDisable(false);
                 });
@@ -658,6 +710,7 @@ public class EspecialApp extends Application {
 
     private void limpiarPanel(VBox beneficios) {
         dpiActual = null;
+        tiempoInicioAtencion = 0;
         labelTurno.setText("—");
         labelNombre.setText("Ningún pasajero en atención");
         comboVuelo.setDisable(true);
@@ -686,12 +739,20 @@ public class EspecialApp extends Application {
 
     private boolean intentarConexion() {
         try {
-            conexion.conectar();
             String pc = java.net.InetAddress.getLocalHost().getHostName();
-            conexion.enviarYRecibir(Mensaje.identificar("ESPECIAL", pc));
+            conexion.conectarEIdentificar("ESPECIAL", pc);
+            conexion.setOnConexionPerdida(() ->
+                    Platform.runLater(this::marcarSinConexion));
+            conexion.setOnConexionRestaurada(() ->
+                    Platform.runLater(this::marcarConectado));
             return true;
         } catch (IOException e) {
-            System.out.println("[ESPECIAL] Sin conexión: " + e.getMessage());
+            System.out.println("[ESPECIAL] Sin conexión inicial: " + ConexionServidor.mensajeError(e));
+            // Registrar callbacks igualmente para que la reconexión automática los dispare
+            conexion.setOnConexionPerdida(() ->
+                    Platform.runLater(this::marcarSinConexion));
+            conexion.setOnConexionRestaurada(() ->
+                    Platform.runLater(this::marcarConectado));
             return false;
         }
     }

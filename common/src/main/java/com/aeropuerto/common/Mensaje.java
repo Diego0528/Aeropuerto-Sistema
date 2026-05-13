@@ -133,8 +133,30 @@ public class Mensaje {
         return new Mensaje(TipoMensaje.COLA_VACIA, tipo.name());
     }
 
+    /**
+     * Finalizar atención — versión simple (compatibilidad hacia atrás).
+     * Usa "Sin vuelo seleccionado" y 0 segundos de duración.
+     */
     public static Mensaje finAtencion(String dpi) {
-        return new Mensaje(TipoMensaje.FIN_ATENCION, dpi);
+        return finAtencion(dpi, "", "", 0);
+    }
+
+    /**
+     * Finalizar atención — versión completa con todos los datos del operador.
+     *
+     * @param dpi              DPI del pasajero
+     * @param vuelo            Vuelo confirmado (puede ser vacío)
+     * @param observaciones    Notas del operador (puede ser vacío)
+     * @param duracionSegundos Segundos desde que fue llamado hasta ahora
+     *
+     * Protocolo: FIN_ATENCION|dpi|vuelo|observaciones|duracionSegundos
+     */
+    public static Mensaje finAtencion(String dpi, String vuelo,
+                                      String observaciones, long duracionSegundos) {
+        // Limpiar campos para no romper el protocolo pipe-delimited
+        String v = vuelo         != null ? vuelo.replace("|", " ")        : "";
+        String o = observaciones != null ? observaciones.replace("|", " ") : "";
+        return new Mensaje(TipoMensaje.FIN_ATENCION, dpi, v, o, String.valueOf(duracionSegundos));
     }
 
     public static Mensaje ping() { return new Mensaje(TipoMensaje.PING); }
