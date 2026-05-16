@@ -65,12 +65,14 @@ public class ChatPanel {
         badgeNotif.setVisible(false);
         badgeNotif.setManaged(false);
 
-        Label icono = new Label("💬");
-        icono.setFont(Font.font(13));
+        Label lblChat = new Label("Chat");
+        lblChat.setFont(Font.font("Segoe UI", 11));
+        lblChat.setTextFill(Color.web("rgba(255,255,255,0.90)"));
 
-        StackPane btnContent = new StackPane(icono, badgeNotif);
+        StackPane btnContent = new StackPane(lblChat, badgeNotif);
         StackPane.setAlignment(badgeNotif, Pos.TOP_RIGHT);
-        btnContent.setTranslateX(4);
+        StackPane.setMargin(badgeNotif, new Insets(-5, -5, 0, 0));
+        btnContent.setMinWidth(40);
 
         Button btn = new Button();
         btn.setGraphic(btnContent);
@@ -78,19 +80,19 @@ public class ChatPanel {
             "-fx-background-color: rgba(255,255,255,0.10);" +
             "-fx-border-color: rgba(255,255,255,0.20);" +
             "-fx-border-radius: 8; -fx-background-radius: 8;" +
-            "-fx-cursor: hand; -fx-padding: 4 8;"
+            "-fx-cursor: hand; -fx-padding: 5 14;"
         );
         btn.setOnMouseEntered(e -> btn.setStyle(
             "-fx-background-color: rgba(255,255,255,0.16);" +
             "-fx-border-color: rgba(255,255,255,0.28);" +
             "-fx-border-radius: 8; -fx-background-radius: 8;" +
-            "-fx-cursor: hand; -fx-padding: 4 8;"
+            "-fx-cursor: hand; -fx-padding: 5 14;"
         ));
         btn.setOnMouseExited(e -> btn.setStyle(
             "-fx-background-color: rgba(255,255,255,0.10);" +
             "-fx-border-color: rgba(255,255,255,0.20);" +
             "-fx-border-radius: 8; -fx-background-radius: 8;" +
-            "-fx-cursor: hand; -fx-padding: 4 8;"
+            "-fx-cursor: hand; -fx-padding: 5 14;"
         ));
         btn.setOnAction(e -> abrirOCerrar());
         return btn;

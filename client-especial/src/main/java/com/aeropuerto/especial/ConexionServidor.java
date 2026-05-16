@@ -43,7 +43,16 @@ public class ConexionServidor {
     }
 
     public void conectar() throws IOException {
-        socket    = new Socket(host, puerto);
+        try {
+            socket = new Socket(host, puerto);
+        } catch (IOException e) {
+            if (!"localhost".equals(host) && !"127.0.0.1".equals(host)) {
+                socket = new Socket("localhost", puerto);
+                System.out.println("[CONEXION] Fallback a localhost:" + puerto);
+            } else {
+                throw e;
+            }
+        }
         entrada   = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         salida    = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
         conectado = true;

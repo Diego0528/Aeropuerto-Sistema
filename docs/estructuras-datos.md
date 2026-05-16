@@ -105,22 +105,3 @@ Pasajero p = indice.buscar(dpi);
 indice.eliminar(dpi);
 ```
 
----
-
-## TestEstructuras
-
-**Archivo:** `common/src/main/java/com/aeropuerto/common/TestEstructuras.java`
-
-Pruebas manuales sin JUnit (cumple la restricción de sin librerías externas). Cubre:
-
-- `testCola()` — comportamiento FIFO con Strings, incluyendo casos vacíos
-- `testColaPasajeros()` — cola con objetos Pasajero
-- `testTablaHash()` — insertar, buscar, actualizar, eliminar
-- `testTablaHashColisiones()` — capacidad=1 para forzar colisiones totales
-- `testEstadoPasajero()` — ciclo de vida de estados
-
-Para ejecutar directamente (sin Maven):
-```
-javac -cp . *.java
-java com.aeropuerto.common.TestEstructuras
-```
