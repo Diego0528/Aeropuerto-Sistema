@@ -1,0 +1,14 @@
+# ── Configuracion AeroQueue ───────────────────────────────────────────────
+# Coloca este archivo en el mismo directorio que el ejecutable (.jar o .exe)
+# Editar con cualquier editor de texto (Bloc de notas, etc.)
+#
+# IMPORTANTE: No uses comillas ni espacios alrededor del signo igual.
+
+# IP de la PC donde corre el servidor (ServerMain)
+ip=192.168.1.100
+
+# Puerto principal del sistema de colas
+puerto=5000
+
+# Puerto del chat interno entre modulos (debe ser diferente al principal)
+puerto_chat=5001

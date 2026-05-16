@@ -133,12 +133,70 @@ public class Mensaje {
         return new Mensaje(TipoMensaje.COLA_VACIA, tipo.name());
     }
 
+    /**
+     * Finalizar atención — versión simple (compatibilidad hacia atrás).
+     * Usa "Sin vuelo seleccionado" y 0 segundos de duración.
+     */
     public static Mensaje finAtencion(String dpi) {
-        return new Mensaje(TipoMensaje.FIN_ATENCION, dpi);
+        return finAtencion(dpi, "", "", 0);
+    }
+
+    /**
+     * Finalizar atención — versión completa con todos los datos del operador.
+     *
+     * @param dpi              DPI del pasajero
+     * @param vuelo            Vuelo confirmado (puede ser vacío)
+     * @param observaciones    Notas del operador (puede ser vacío)
+     * @param duracionSegundos Segundos desde que fue llamado hasta ahora
+     *
+     * Protocolo: FIN_ATENCION|dpi|vuelo|observaciones|duracionSegundos
+     */
+    public static Mensaje finAtencion(String dpi, String vuelo,
+                                      String observaciones, long duracionSegundos) {
+        // Limpiar campos para no romper el protocolo pipe-delimited
+        String v = vuelo         != null ? vuelo.replace("|", " ")        : "";
+        String o = observaciones != null ? observaciones.replace("|", " ") : "";
+        return new Mensaje(TipoMensaje.FIN_ATENCION, dpi, v, o, String.valueOf(duracionSegundos));
     }
 
     public static Mensaje ping() { return new Mensaje(TipoMensaje.PING); }
     public static Mensaje pong() { return new Mensaje(TipoMensaje.PONG); }
+
+    public static Mensaje identificar(String tipoCliente, String nombrePc) {
+        return new Mensaje(TipoMensaje.IDENTIFICAR, tipoCliente, nombrePc);
+    }
+
+    public static Mensaje identificarOk() {
+        return new Mensaje(TipoMensaje.IDENTIFICAR_OK);
+    }
+
+    /**
+     * Crea un mensaje LOG_ENTRY para enviar al monitor.
+     * El mensaje (último campo) puede contener '|' sin problema —
+     * el receptor reconstruye uniendo campos 4+ con '|'.
+     */
+    public static Mensaje logEntry(LogEntry entry) {
+        return new Mensaje(TipoMensaje.LOG_ENTRY,
+                String.valueOf(entry.getId()),
+                entry.getTimestamp(),
+                entry.getNivel().name(),
+                entry.getModulo(),
+                entry.getMensaje());
+    }
+
+    /**
+     * Crea un STATUS_UPDATE para notificar conexión/desconexión de un cliente.
+     * accion = "CONECTADO" | "DESCONECTADO"
+     */
+    public static Mensaje statusUpdate(String accion, ClienteInfo info) {
+        return new Mensaje(TipoMensaje.STATUS_UPDATE,
+                accion,
+                info.getIp(),
+                String.valueOf(info.getPuerto()),
+                info.getTipo().name(),
+                info.getNombrePc(),
+                info.getTimestamp());
+    }
 
     // ── toString ──────────────────────────────────────────────────────────────
 
