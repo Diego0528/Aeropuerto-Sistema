@@ -1,47 +1,34 @@
-# Sistema de Colas — Aeropuerto Internacional La Aurora
+# AeroQueue v1.1 — Sistema de Colas — Aeropuerto Internacional La Aurora
 
-Sistema de gestión de turnos para aeropuerto, implementado con arquitectura cliente-servidor sobre sockets TCP/IP. Desarrollado en Java 21 con interfaz gráfica JavaFX.
+Sistema de gestión de turnos para aeropuerto, implementado con arquitectura cliente-servidor sobre sockets TCP/IP. Desarrollado en Java 21 con interfaz gráfica JavaFX. Distribuible como `.exe` portable sin necesidad de Java instalado.
 
 **Equipo:** Diego Andrino (servidor / integración) · Pablo Acan (estructuras de datos / client-registro)  
-**Entrega:** 10 de mayo
+**Versión:** 1.1.0
 
 ---
 
 ## Descripción general
 
-Los pasajeros se registran en un kiosko ingresando su DPI (el sistema consulta el catálogo RENAP ficticio y autocompleta el nombre). Reciben un número de turno según el tipo de cola elegido. Los operadores en ventanilla atienden cada cola de forma ordenada y registran la información específica de cada tipo de pasajero.
+Los pasajeros se registran en un kiosko ingresando su DPI (el sistema consulta el catálogo RENAP ficticio y autocompleta el nombre). Reciben un número de turno según el tipo de cola elegido. Los operadores en ventanilla atienden cada cola de forma ordenada. El personal supervisor dispone de un visor de logs en tiempo real y un monitor de módulos conectados.
 
 ### Tres tipos de cola
 
 | Cola | Pasajeros | Datos que registra el operador |
 |---|---|---|
 | **General** | Público en general | Vuelo + observaciones |
-| **Prioritaria** | Adultos mayores, embarazadas, discapacidad | Vuelo + checklist de asistencia requerida |
-| **Especial / VIP** | Pasajeros VIP | Vuelo + clase + numero de asiento + beneficios activables |
+| **Prioritaria** | Adultos mayores, embarazadas, discapacidad | Vuelo + checklist de asistencia |
+| **Especial / VIP** | Pasajeros VIP | Vuelo + clase + asiento + beneficios |
 
 ---
 
-## Flujo de trabajo
+## Novedades en v1.1
 
-```
-1. Pasajero ingresa DPI en kiosko
-2. Sistema consulta CatalogoRENAP → autocompleta nombre
-3. Pasajero selecciona tipo de cola → obtiene numero de turno
-4. Operador presiona "Llamar Siguiente" en su ventanilla
-5. Sistema muestra nombre y turno del pasajero
-6. Operador completa formulario (vuelo, asistencia, beneficios)
-7. Operador presiona "Finalizar Atencion" → turno cerrado
-```
-
----
-
-## Tecnologias
-
-- **Java 21**
-- **JavaFX 21.0.2** — interfaz grafica de clientes
-- **Maven 3** — build multi-modulo
-- **TCP/IP sockets** — comunicacion cliente-servidor (puerto 5000 por defecto)
-- Sin librerias externas en `common` — estructuras de datos implementadas desde cero
+- **Chat interno** — canal de mensajería entre todos los módulos conectados (puerto 5001)
+- **Visor de Logs** (`client-logs`) — muestra eventos en tiempo real y permite exportar a JSON
+- **Monitor de Módulos** (`client-monitor`) — árbol de conexiones en tiempo real; puede iniciar/detener el servidor
+- **Distribución `.exe`** — empaquetado con JRE embebido vía `jpackage`; el usuario solo ejecuta el `.exe`
+- **Auto-reconexión** — todos los módulos reintentan la conexión cada 5 s si el servidor cae
+- **Fallback a localhost** — los módulos en la misma PC que el servidor se conectan automáticamente vía loopback
 
 ---
 
@@ -50,42 +37,78 @@ Los pasajeros se registran en un kiosko ingresando su DPI (el sistema consulta e
 ```
 Aeropuerto-Sistema/
 ├── pom.xml                          # POM padre
-├── common/                          # Codigo compartido
+├── config.txt                       # Plantilla de configuración (ip, puerto, puerto_chat)
+├── empaquetar.ps1                   # Script que genera los .exe en dist/
+├── common/                          # Código compartido (sin librerías externas)
 │   └── .../com/aeropuerto/common/
-│       ├── Cola.java                # Cola generica (lista enlazada simple)
-│       ├── TablaHash.java           # Tabla hash con encadenamiento
-│       ├── Pasajero.java            # DTO del pasajero
-│       ├── Mensaje.java             # Protocolo de comunicacion
-│       ├── TipoMensaje.java         # Enum tipos de mensaje
-│       ├── TipoAtencion.java        # Enum GENERAL / PRIORITARIA / ESPECIAL
-│       ├── EstadoPasajero.java      # Enum EN_ESPERA / EN_ATENCION / ATENDIDO
-│       ├── CatalogoRENAP.java       # 15 personas ficticias para demos
-│       └── TestEstructuras.java     # Pruebas manuales sin JUnit
+│       ├── Cola.java                # Cola genérica (lista enlazada)
+│       ├── TablaHash.java           # Tabla hash con encadenamiento O(1)
+│       ├── Pasajero.java
+│       ├── Mensaje.java             # Protocolo de comunicación
+│       ├── TipoMensaje.java
+│       ├── ClienteInfo.java         # Info de conexión por módulo
+│       ├── RegistroConexiones.java  # Registro de todos los módulos activos
+│       ├── ConfigServidor.java      # Lee config.txt
+│       ├── LogEntry.java            # DTO de evento de log
+│       ├── ChatConexion.java        # Conexión al ChatServer (puerto 5001)
+│       └── CatalogoRENAP.java       # Personas ficticias para demos
 ├── server/                          # Servidor central
 │   └── .../com/aeropuerto/server/
-│       ├── ServerMain.java          # Acepta conexiones TCP en puerto 5000
-│       ├── ClientHandler.java       # Un hilo por cliente conectado
-│       └── GestorColas.java         # Singleton thread-safe con las tres colas
+│       ├── ServerMain.java          # TCP :5000 + lanza ChatServer :5001
+│       ├── ClientHandler.java       # Un hilo por cliente
+│       ├── GestorColas.java         # Singleton con las tres colas
+│       ├── LogDispatcher.java       # Broadcast de logs a clientes LOGS/MONITOR
+│       └── ChatServer.java          # Servidor de chat en hilo separado
 ├── client-registro/                 # Kiosko de pasajeros
 ├── client-general/                  # Ventanilla cola General
 ├── client-prioritaria/              # Ventanilla cola Prioritaria
 ├── client-especial/                 # Ventanilla cola Especial/VIP
-└── docs/                            # Documentacion tecnica
+├── client-logs/                     # Visor de logs en tiempo real
+├── client-monitor/                  # Monitor de módulos + control del servidor
+└── docs/                            # Documentación técnica
     ├── arquitectura.md
     ├── protocolo.md
     ├── flujo-trabajo.md
     ├── estructuras-datos.md
-    └── guia-ejecucion.md
+    ├── guia-ejecucion.md
+    └── Informe Tecnico.md
 ```
 
 ---
 
-## Protocolo de mensajes (TCP, texto plano)
+## Distribución y uso (`.exe`)
+
+```
+1. Ejecutar empaquetar.ps1 — genera dist/ con una carpeta por módulo
+2. Copiar cada carpeta a la PC destino
+3. Editar config.txt con la IP del servidor y los puertos
+4. En la PC servidor: ejecutar AeroQueue-Servidor\AeroQueue-Servidor.exe
+5. En las demás PCs: ejecutar el .exe correspondiente
+```
+
+No se requiere Java ni Maven instalado en las PCs de producción.
+
+---
+
+## Tecnologías
+
+- **Java 21**, **JavaFX 21.0.2**, **Maven 3** (multi-módulo)
+- **TCP/IP sockets** — puerto 5000 (operaciones + push) y 5001 (chat)
+- **jpackage** — empaquetado portable con JRE embebido
+- Sin librerías externas — `Cola<T>` y `TablaHash<K,V>` implementadas desde cero
+
+---
+
+## Protocolo de mensajes (resumen)
 
 Formato: `TIPO|campo1|campo2\n`
 
 ```
-# Registro
+# Identificación al conectar
+C→S:  IDENTIFICAR|REGISTRO|PC-Kiosko
+S→C:  IDENTIFICAR_OK
+
+# Registro de pasajero
 C→S:  REGISTRO|1234567890101|Carlos Garcia|GENERAL
 S→C:  CONFIRMACION|1234567890101|7
 
@@ -93,39 +116,15 @@ S→C:  CONFIRMACION|1234567890101|7
 C→S:  LLAMAR_SIGUIENTE|GENERAL
 S→C:  PASAJERO_LLAMADO|1234567890101|Carlos Garcia|7
 
-# Finalizar atencion
-C→S:  FIN_ATENCION|1234567890101
-S→C:  CONFIRMACION|1234567890101|7
+# Push de estado al Monitor
+S→Monitor:  STATUS_UPDATE|CONECTADO|192.168.1.10|52341|REGISTRO|PC-Kiosko|2026-05-16 09:15:00
+
+# Chat
+C→S (5001):  MSG|PC-Monitor|Servidor listo
+S→todos:     BROADCAST|PC-Monitor|Servidor listo
 ```
 
-Ver [`docs/protocolo.md`](docs/protocolo.md) para la especificacion completa.
-
----
-
-## Compilar y ejecutar
-
-### Compilar todo
-
-```bash
-mvn clean package
-```
-
-### Orden de inicio
-
-```bash
-# 1. Primero el servidor
-java -jar server/target/server-1.0-SNAPSHOT.jar
-
-# 2. Kiosko de pasajeros
-mvn javafx:run -pl client-registro
-
-# 3. Una o mas ventanillas de operador
-mvn javafx:run -pl client-general
-mvn javafx:run -pl client-prioritaria
-mvn javafx:run -pl client-especial
-```
-
-Ver [`docs/guia-ejecucion.md`](docs/guia-ejecucion.md) para instrucciones detalladas.
+Ver [`docs/protocolo.md`](docs/protocolo.md) para la especificación completa.
 
 ---
 
@@ -143,28 +142,29 @@ Ver [`docs/guia-ejecucion.md`](docs/guia-ejecucion.md) para instrucciones detall
 
 ---
 
-## Documentacion tecnica
+## Documentación técnica
 
 | Documento | Contenido |
 |---|---|
-| [`docs/arquitectura.md`](docs/arquitectura.md) | Diagrama de modulos, capas y thread model |
-| [`docs/protocolo.md`](docs/protocolo.md) | Especificacion del protocolo TCP/IP |
+| [`docs/arquitectura.md`](docs/arquitectura.md) | Diagrama de módulos, capas y thread model |
+| [`docs/protocolo.md`](docs/protocolo.md) | Especificación del protocolo TCP/IP (operaciones + push + chat) |
 | [`docs/flujo-trabajo.md`](docs/flujo-trabajo.md) | Flujo completo paso a paso con diagramas |
 | [`docs/estructuras-datos.md`](docs/estructuras-datos.md) | Cola y TablaHash — API, complejidad, ejemplos |
-| [`docs/guia-ejecucion.md`](docs/guia-ejecucion.md) | Compilar, configurar IP y ejecutar |
+| [`docs/guia-ejecucion.md`](docs/guia-ejecucion.md) | Compilar, empaquetar y distribuir |
+| [`docs/Informe Tecnico.md`](docs/Informe%20Tecnico.md) | Informe técnico completo del proyecto |
 
 ---
 
-## Restriccion del proyecto
+## Restricción del proyecto
 
-> Los modulos `Cola<T>` y `TablaHash<K,V>` deben implementarse desde cero en `common`.  
-> No se permite usar `ArrayList`, `LinkedList`, `HashMap` ni ninguna coleccion de Java.
+> `Cola<T>` y `TablaHash<K,V>` implementadas desde cero en `common`.  
+> No se permite usar `ArrayList`, `LinkedList`, `HashMap` ni colecciones de Java.
 
 ---
 
 ## Paquetes Java
 
-| Modulo | Paquete base |
+| Módulo | Paquete base |
 |---|---|
 | common | `com.aeropuerto.common` |
 | server | `com.aeropuerto.server` |
@@ -172,12 +172,14 @@ Ver [`docs/guia-ejecucion.md`](docs/guia-ejecucion.md) para instrucciones detall
 | client-general | `com.aeropuerto.general` |
 | client-prioritaria | `com.aeropuerto.prioritaria` |
 | client-especial | `com.aeropuerto.especial` |
+| client-logs | `com.aeropuerto.logs` |
+| client-monitor | `com.aeropuerto.monitor` |
 
 ---
 
-## Workflow de Git
+## Git workflow
 
 ```
-main     ← versiones estables (merge desde develop)
-develop  ← integracion continua
+main     ← versiones estables (v1.0.0, v1.1.0, ...)
+develop  ← integración continua
 ```

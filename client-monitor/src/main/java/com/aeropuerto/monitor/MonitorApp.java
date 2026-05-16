@@ -507,24 +507,25 @@ public class MonitorApp extends Application {
     // ── Logica de conexion ────────────────────────────────────────────────────
 
     private void conectarAsync() {
+        ConexionMonitor cm = new ConexionMonitor();
+        cm.setOnStatus(this::procesarStatus);
+        cm.setOnLog(entry -> Platform.runLater(() -> {
+            totalLogs++;
+            lblLogs.setText(totalLogs + " logs recibidos");
+        }));
+        cm.setOnDesconexion(() -> Platform.runLater(this::marcarDesconectado));
+        cm.setOnConexionRestaurada(() -> Platform.runLater(() -> {
+            limpiarArbol();
+            marcarConectado();
+        }));
+        conexion = cm; // asignar antes del intento para que los callbacks puedan usarlo
         Thread t = new Thread(() -> {
             try {
-                ConexionMonitor cm = new ConexionMonitor();
-                cm.setOnStatus(this::procesarStatus);
-                cm.setOnLog(entry -> Platform.runLater(() -> {
-                    totalLogs++;
-                    lblLogs.setText(totalLogs + " logs recibidos");
-                }));
-                cm.setOnDesconexion(() -> Platform.runLater(this::marcarDesconectado));
-                cm.setOnConexionRestaurada(() -> Platform.runLater(() -> {
-                    limpiarArbol();
-                    marcarConectado();
-                }));
                 cm.conectar(HOST, PUERTO);
-                conexion = cm;
                 Platform.runLater(this::marcarConectado);
             } catch (IOException e) {
                 Platform.runLater(this::marcarDesconectado);
+                // la reconexion automatica ya fue iniciada dentro de cm.conectar()
             }
         }, "monitor-connect");
         t.setDaemon(true);

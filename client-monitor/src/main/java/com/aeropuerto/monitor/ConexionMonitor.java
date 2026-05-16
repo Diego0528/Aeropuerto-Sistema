@@ -47,7 +47,20 @@ public class ConexionMonitor {
         try { reconectarPc = InetAddress.getLocalHost().getHostName(); }
         catch (Exception e) { reconectarPc = "PC-Monitor"; }
 
-        abrirSocket(host, puerto, reconectarPc);
+        try {
+            abrirSocket(host, puerto, reconectarPc);
+        } catch (IOException e) {
+            // Fallo inicial — intentar localhost como fallback antes de reconectar
+            try {
+                if (!"localhost".equals(host) && !"127.0.0.1".equals(host)) {
+                    abrirSocket("localhost", puerto, reconectarPc);
+                    return; // conectado via localhost
+                }
+            } catch (IOException ignored) { }
+            // Ninguno funcionó — iniciar auto-reconexión y propagar error
+            iniciarReconexionAutomatica();
+            throw e;
+        }
     }
 
     /** Abre el socket, identifica la sesión y arranca el hilo lector. */
