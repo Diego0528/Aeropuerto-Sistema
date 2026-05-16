@@ -1,0 +1,57 @@
+/* ── Monitor de Módulos — estilos dark para TreeView ────────────────────── */
+
+.tree-view {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.tree-view .tree-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(255,255,255,0.95);
+    -fx-border-color: transparent;
+}
+
+.tree-view .tree-cell:hover {
+    -fx-background-color: rgba(255,255,255,0.05);
+}
+
+.tree-view .tree-cell:selected {
+    -fx-background-color: rgba(255,255,255,0.10);
+    -fx-text-fill: rgba(255,255,255,0.95);
+}
+
+.tree-view .tree-cell:selected:focused {
+    -fx-background-color: rgba(255,255,255,0.12);
+    -fx-text-fill: rgba(255,255,255,0.95);
+}
+
+.tree-view .tree-cell:focused {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(255,255,255,0.95);
+}
+
+/* Ocultar el focus ring por defecto */
+.tree-view:focused {
+    -fx-background-color: transparent;
+}
+
+/* Flecha de expansion del arbol */
+.tree-view .tree-disclosure-node .arrow {
+    -fx-background-color: rgba(255,255,255,0.55);
+}
+
+.tree-view .tree-cell:selected .tree-disclosure-node .arrow {
+    -fx-background-color: rgba(255,255,255,0.90);
+}
+
+/* ScrollBar dentro del TreeView */
+.tree-view .scroll-bar {
+    -fx-background-color: transparent;
+}
+.tree-view .scroll-bar .thumb {
+    -fx-background-color: rgba(255,255,255,0.18);
+    -fx-background-radius: 4;
+}
+.tree-view .scroll-bar .track {
+    -fx-background-color: transparent;
+}

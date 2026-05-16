@@ -119,14 +119,16 @@ public class RegistroApp extends Application {
     private HBox  paxStrip;
     private Button botonRegistrar;
 
-    private String  razonTipo        = "";
-    private boolean nombreDesdeRenap = false;
+    private String    razonTipo        = "";
+    private boolean   nombreDesdeRenap = false;
+    private ChatPanel chatPanel;
 
     // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
+        chatPanel = new ChatPanel();
         stage.setTitle("AeroQueue — Registro");
         stage.setResizable(true);
         stage.setMinWidth(900);
@@ -250,7 +252,8 @@ public class RegistroApp extends Application {
         estadoConexion.setCycleCount(Animation.INDEFINITE);
         estadoConexion.play();
 
-        HBox derecha = new HBox(18, lblFecha, lblHora, connBadge);
+        Button btnChat = chatPanel.crearBotonChat();
+        HBox derecha = new HBox(14, lblFecha, lblHora, btnChat, connBadge);
         derecha.setAlignment(Pos.CENTER_RIGHT);
 
         nav.getChildren().addAll(brand, derecha);

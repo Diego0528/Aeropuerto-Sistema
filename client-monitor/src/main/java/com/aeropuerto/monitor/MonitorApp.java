@@ -1,5 +1,6 @@
 package com.aeropuerto.monitor;
 
+import com.aeropuerto.common.ConfigServidor;
 import com.aeropuerto.common.LogEntry;
 
 import javafx.animation.*;
@@ -12,35 +13,39 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.prefs.Preferences;
 
 /**
- * Monitor de módulos — Task Manager estilo árbol.
+ * Monitor de modulos — Task Manager estilo arbol.
  *
- * Funciones:
- * - Árbol de conexiones en tiempo real por tipo de módulo
- * - Auto-reconexión al servidor (cada 5 s)
+ * - Arbol de conexiones en tiempo real por tipo de modulo
+ * - Auto-reconexion al servidor (cada 5 s)
  * - Panel de control del servidor: Start / Stop via ProcessBuilder,
- *   con mini-consola para ver el output del proceso
+ *   con selector de archivo para el JAR y mini-consola de output
+ * - Boton de chat interno
  */
 public class MonitorApp extends Application {
 
-    private static final String HOST   = com.aeropuerto.common.ConfigServidor.getInstance().getHost();
-    private static final int    PUERTO = com.aeropuerto.common.ConfigServidor.getInstance().getPuerto();
+    private static final String HOST   = ConfigServidor.getInstance().getHost();
+    private static final int    PUERTO = ConfigServidor.getInstance().getPuerto();
 
-    // ── Paleta dark navy glassmorphism ────────────────────────────────────────
+    private static final String PREF_JAR = "server_jar_path";
+
+    // ── Paleta dark navy ──────────────────────────────────────────────────────
     static final String BG_DARK   = "#0f1629";
     static final String BG_CARD   = "rgba(255,255,255,0.04)";
     static final String BG_BORDER = "rgba(255,255,255,0.10)";
     static final String T_BRIGHT  = "rgba(255,255,255,0.95)";
     static final String T_MED     = "rgba(255,255,255,0.65)";
     static final String T_DIM     = "rgba(255,255,255,0.40)";
-    static final String ACC       = "#FF9F0A"; // ámbar — identidad monitor
+    static final String ACC       = "#FF9F0A";
 
     static final String C_REGISTRO    = "#FF9F0A";
     static final String C_GENERAL     = "#32D74B";
@@ -49,8 +54,7 @@ public class MonitorApp extends Application {
     static final String C_MONITOR     = "#BF5AF2";
     static final String C_CONN        = "#32D74B";
 
-    // ── Estado del árbol ──────────────────────────────────────────────────────
-
+    // ── Estado ────────────────────────────────────────────────────────────────
     private final Map<String, TreeItem<NodoModulo>> grupos     = new HashMap<>();
     private final Map<String, TreeItem<NodoModulo>> instancias = new HashMap<>();
 
@@ -63,30 +67,35 @@ public class MonitorApp extends Application {
     private Label                lblLogs;
 
     private ConexionMonitor conexion;
+    private ChatPanel       chatPanel;
 
     // ── Control del servidor ──────────────────────────────────────────────────
-    private Process    procesosServidor;
-    private TextField  rutaJar;
-    private TextArea   consola;
-    private Button     btnIniciar;
-    private Button     btnDetener;
+    private Process   procesosServidor;
+    private TextField rutaJar;
+    private TextArea  consola;
+    private Button    btnIniciar;
+    private Button    btnDetener;
 
-    // ── Tipos de módulo en orden de presentación ──────────────────────────────
     private static final String[] TIPOS_ORDEN = {
-            "REGISTRO", "GENERAL", "PRIORITARIA", "ESPECIAL", "LOGS", "MONITOR"
+        "REGISTRO", "GENERAL", "PRIORITARIA", "ESPECIAL", "LOGS", "MONITOR"
     };
 
-    // ── Aplicación ────────────────────────────────────────────────────────────
+    // ── Inicio ────────────────────────────────────────────────────────────────
 
     @Override
     public void start(Stage stage) {
-        stage.setTitle("AeroQueue — Monitor de Módulos");
+        ConfigServidor.crearPlantillaSiNoExiste();
+        stage.setTitle("AeroQueue — Monitor de Modulos");
         stage.setMinWidth(800);
         stage.setMinHeight(560);
+
+        chatPanel = new ChatPanel();
 
         VBox root = construirUI();
         Scene scene = new Scene(root);
         scene.setFill(Color.web(BG_DARK));
+        scene.getStylesheets().add(getClass().getResource("/monitor.css").toExternalForm());
+
         stage.setScene(scene);
         stage.setWidth(1060);
         stage.setHeight(740);
@@ -114,7 +123,7 @@ public class MonitorApp extends Application {
     }
 
     private HBox construirTopBar() {
-        Label titulo = new Label("Monitor de Módulos");
+        Label titulo = new Label("Monitor de Modulos");
         titulo.setStyle("-fx-font-size: 17px; -fx-font-weight: bold; -fx-text-fill: " + T_BRIGHT + ";");
 
         Label sub = new Label("Aeropuerto Guatemala — Conexiones en Tiempo Real");
@@ -131,42 +140,56 @@ public class MonitorApp extends Application {
         HBox badgeConn = new HBox(6, dotEstado, lblEstado);
         badgeConn.setAlignment(Pos.CENTER_LEFT);
         badgeConn.setPadding(new Insets(5, 12, 5, 12));
-        badgeConn.setStyle("-fx-background-color: rgba(255,69,58,0.10);" +
-                "-fx-border-color: rgba(255,69,58,0.30); -fx-border-radius: 20; -fx-background-radius: 20;");
+        badgeConn.setStyle(
+            "-fx-background-color: rgba(255,69,58,0.10);" +
+            "-fx-border-color: rgba(255,69,58,0.30); -fx-border-radius: 20; -fx-background-radius: 20;"
+        );
 
         lblConexiones = new Label("0 conexiones");
-        lblConexiones.setStyle("-fx-font-size: 11px; -fx-text-fill: " + T_DIM + ";" +
-                "-fx-background-color: rgba(255,255,255,0.06); -fx-padding: 4 12; -fx-background-radius: 12;");
+        lblConexiones.setStyle(
+            "-fx-font-size: 11px; -fx-text-fill: " + T_DIM + ";" +
+            "-fx-background-color: rgba(255,255,255,0.06); -fx-padding: 4 12; -fx-background-radius: 12;"
+        );
 
         lblLogs = new Label("0 logs recibidos");
-        lblLogs.setStyle("-fx-font-size: 11px; -fx-text-fill: " + T_DIM + ";" +
-                "-fx-background-color: rgba(255,255,255,0.06); -fx-padding: 4 12; -fx-background-radius: 12;");
+        lblLogs.setStyle(
+            "-fx-font-size: 11px; -fx-text-fill: " + T_DIM + ";" +
+            "-fx-background-color: rgba(255,255,255,0.06); -fx-padding: 4 12; -fx-background-radius: 12;"
+        );
+
+        Button btnChat = chatPanel.crearBotonChat();
 
         HBox spacer = new HBox();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox bar = new HBox(14, textos, spacer, lblLogs, lblConexiones, badgeConn);
+        HBox bar = new HBox(14, textos, spacer, lblLogs, lblConexiones, btnChat, badgeConn);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(14, 20, 14, 20));
-        bar.setStyle("-fx-background-color: rgba(255,255,255,0.03);" +
-                "-fx-border-color: transparent transparent " + BG_BORDER + " transparent; -fx-border-width: 0 0 1 0;");
+        bar.setStyle(
+            "-fx-background-color: rgba(255,255,255,0.03);" +
+            "-fx-border-color: transparent transparent " + BG_BORDER + " transparent; -fx-border-width: 0 0 1 0;"
+        );
         return bar;
     }
 
     private HBox construirCuerpo() {
         arbol = construirArbol();
 
-        Label lblArbolTitulo = new Label("MÓDULOS ACTIVOS");
-        lblArbolTitulo.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: " + T_DIM + ";" +
-                "-fx-letter-spacing: 1.5px;");
+        Label lblArbolTitulo = new Label("MODULOS ACTIVOS");
+        lblArbolTitulo.setStyle(
+            "-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: " + T_DIM + ";" +
+            "-fx-letter-spacing: 1.5px;"
+        );
 
         VBox panelIzq = new VBox(10, lblArbolTitulo, arbol);
         panelIzq.setPadding(new Insets(16));
         panelIzq.setPrefWidth(380);
         panelIzq.setMinWidth(300);
         VBox.setVgrow(arbol, Priority.ALWAYS);
-        panelIzq.setStyle("-fx-background-color: " + BG_CARD + ";" +
-                "-fx-border-color: transparent " + BG_BORDER + " transparent transparent; -fx-border-width: 0 1 0 0;");
+        panelIzq.setStyle(
+            "-fx-background-color: " + BG_CARD + ";" +
+            "-fx-border-color: transparent " + BG_BORDER + " transparent transparent; -fx-border-width: 0 1 0 0;"
+        );
 
         panelDetalle = construirPanelDetalle(null);
 
@@ -186,24 +209,53 @@ public class MonitorApp extends Application {
         VBox panel = new VBox(8);
         panel.setPadding(new Insets(12, 20, 12, 20));
         panel.setStyle(
-                "-fx-background-color: rgba(0,0,0,0.25);" +
-                "-fx-border-color: " + BG_BORDER + " transparent transparent transparent;" +
-                "-fx-border-width: 1 0 0 0;"
+            "-fx-background-color: rgba(0,0,0,0.25);" +
+            "-fx-border-color: " + BG_BORDER + " transparent transparent transparent;" +
+            "-fx-border-width: 1 0 0 0;"
         );
 
         Label titulo = new Label("CONTROL DEL SERVIDOR");
-        titulo.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: " + ACC + ";" +
-                "-fx-letter-spacing: 1.5px;");
+        titulo.setStyle(
+            "-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: " + ACC + ";" +
+            "-fx-letter-spacing: 1.5px;"
+        );
 
-        // Fila: ruta JAR + botones
-        rutaJar = new TextField("server-1.0-SNAPSHOT.jar");
-        rutaJar.setPromptText("Ruta al server JAR (relativa o absoluta)...");
+        // Campo de ruta con valor guardado
+        Preferences prefs = Preferences.userNodeForPackage(MonitorApp.class);
+        String rutaGuardada = prefs.get(PREF_JAR, "");
+
+        rutaJar = new TextField(rutaGuardada);
+        rutaJar.setPromptText("Ruta al servidor (.exe o .jar) — usa Examinar...");
         rutaJar.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.06); -fx-text-fill: " + T_BRIGHT + ";" +
-                "-fx-prompt-text-fill: " + T_DIM + "; -fx-border-color: " + BG_BORDER + ";" +
-                "-fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 5 10; -fx-font-size: 12px;"
+            "-fx-background-color: rgba(255,255,255,0.06); -fx-text-fill: " + T_BRIGHT + ";" +
+            "-fx-prompt-text-fill: " + T_DIM + "; -fx-border-color: " + BG_BORDER + ";" +
+            "-fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 5 10; -fx-font-size: 12px;"
         );
         HBox.setHgrow(rutaJar, Priority.ALWAYS);
+
+        // Guardar ruta al escribir
+        rutaJar.textProperty().addListener((o, a, b) -> prefs.put(PREF_JAR, b));
+
+        Button btnBuscar = new Button("Examinar...");
+        btnBuscar.setStyle(estiloBoton("rgba(255,255,255,0.10)", T_MED));
+        btnBuscar.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Seleccionar ejecutable del servidor");
+            fc.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("Servidor AeroQueue", "*.exe", "*.jar"),
+                new FileChooser.ExtensionFilter("Ejecutable (.exe)", "*.exe"),
+                new FileChooser.ExtensionFilter("JAR ejecutable", "*.jar"));
+            if (!rutaJar.getText().isBlank()) {
+                File actual = new File(rutaJar.getText());
+                if (actual.getParentFile() != null && actual.getParentFile().exists())
+                    fc.setInitialDirectory(actual.getParentFile());
+            }
+            File seleccionado = fc.showOpenDialog(btnBuscar.getScene().getWindow());
+            if (seleccionado != null) {
+                rutaJar.setText(seleccionado.getAbsolutePath());
+                prefs.put(PREF_JAR, seleccionado.getAbsolutePath());
+            }
+        });
 
         btnIniciar = new Button("▶  Iniciar Servidor");
         btnIniciar.setStyle(estiloBoton("#32D74B44", "#32D74B"));
@@ -214,54 +266,67 @@ public class MonitorApp extends Application {
         btnDetener.setDisable(true);
         btnDetener.setOnAction(e -> detenerServidor());
 
-        HBox fila = new HBox(10, rutaJar, btnIniciar, btnDetener);
+        HBox fila = new HBox(10, rutaJar, btnBuscar, btnIniciar, btnDetener);
         fila.setAlignment(Pos.CENTER_LEFT);
 
-        // Mini-consola del servidor
         consola = new TextArea();
         consola.setEditable(false);
         consola.setPrefRowCount(5);
         consola.setStyle(
-                "-fx-control-inner-background: rgba(0,0,0,0.50);" +
-                "-fx-background-color: rgba(0,0,0,0.50);" +
-                "-fx-text-fill: #A0FF80; -fx-font-family: 'Consolas'; -fx-font-size: 11px;" +
-                "-fx-border-color: " + BG_BORDER + "; -fx-border-radius: 6; -fx-background-radius: 6;"
+            "-fx-control-inner-background: rgba(0,0,0,0.50);" +
+            "-fx-background-color: rgba(0,0,0,0.50);" +
+            "-fx-text-fill: #A0FF80; -fx-font-family: 'Consolas'; -fx-font-size: 11px;" +
+            "-fx-border-color: " + BG_BORDER + "; -fx-border-radius: 6; -fx-background-radius: 6;"
         );
-        consola.setPromptText("Output del servidor aparecerá aquí...");
+        consola.setPromptText("Output del servidor aparecera aqui...");
 
         panel.getChildren().addAll(titulo, fila, consola);
         return panel;
     }
 
     private String estiloBoton(String bg, String textColor) {
-        return "-fx-background-color: " + bg + "; -fx-text-fill: " + textColor + ";" +
-                "-fx-border-color: " + textColor + "44; -fx-border-radius: 6; -fx-background-radius: 6;" +
-                "-fx-padding: 5 14; -fx-cursor: hand; -fx-font-size: 12px; -fx-font-weight: bold;";
+        return
+            "-fx-background-color: " + bg + "; -fx-text-fill: " + textColor + ";" +
+            "-fx-border-color: " + textColor + "44; -fx-border-radius: 6; -fx-background-radius: 6;" +
+            "-fx-padding: 5 14; -fx-cursor: hand; -fx-font-size: 12px; -fx-font-weight: bold;";
     }
 
-    // ── Lógica del servidor ───────────────────────────────────────────────────
+    // ── Logica del servidor ───────────────────────────────────────────────────
 
     private void iniciarServidor() {
-        String jar = rutaJar.getText().trim();
-        if (jar.isEmpty()) {
-            appendConsola("[ERROR] Especifica la ruta al archivo JAR del servidor.");
+        String ruta = rutaJar.getText().trim();
+        if (ruta.isEmpty()) {
+            appendConsola("[ERROR] Usa el boton 'Examinar...' para seleccionar el servidor.");
+            return;
+        }
+        File archivo = new File(ruta);
+        if (!archivo.exists()) {
+            appendConsola("[ERROR] Archivo no encontrado: " + ruta);
+            appendConsola("[ERROR] Verifica la ruta con el boton 'Examinar...'");
             return;
         }
         if (procesosServidor != null && procesosServidor.isAlive()) {
-            appendConsola("[INFO] El servidor ya está en ejecución.");
+            appendConsola("[INFO] El servidor ya esta en ejecucion.");
             return;
         }
 
-        appendConsola("[INFO] Iniciando servidor: java -jar " + jar);
+        ProcessBuilder pb;
+        if (ruta.toLowerCase().endsWith(".exe")) {
+            appendConsola("[INFO] Iniciando: " + ruta);
+            pb = new ProcessBuilder(archivo.getAbsolutePath());
+        } else {
+            appendConsola("[INFO] Iniciando: java -jar " + ruta);
+            pb = new ProcessBuilder("java", "-jar", archivo.getAbsolutePath());
+        }
+
         try {
-            ProcessBuilder pb = new ProcessBuilder("java", "-jar", jar);
-            pb.redirectErrorStream(true); // stderr → stdout
+            pb.directory(archivo.getParentFile());
+            pb.redirectErrorStream(true);
             procesosServidor = pb.start();
 
             btnIniciar.setDisable(true);
             btnDetener.setDisable(false);
 
-            // Leer output en hilo de fondo y mostrarlo en la consola
             Thread outReader = new Thread(() -> {
                 try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(procesosServidor.getInputStream()))) {
@@ -272,7 +337,7 @@ public class MonitorApp extends Application {
                     }
                 } catch (IOException ignored) {}
                 Platform.runLater(() -> {
-                    appendConsola("[INFO] Proceso del servidor terminó.");
+                    appendConsola("[INFO] Proceso del servidor termino.");
                     btnIniciar.setDisable(false);
                     btnDetener.setDisable(true);
                     procesosServidor = null;
@@ -283,14 +348,14 @@ public class MonitorApp extends Application {
 
         } catch (IOException e) {
             appendConsola("[ERROR] No se pudo iniciar el servidor: " + e.getMessage());
-            appendConsola("[ERROR] Verifica que 'java' esté en el PATH y que la ruta al JAR sea correcta.");
+            appendConsola("[ERROR] Asegurate de que 'java' este en el PATH del sistema.");
         }
     }
 
     private void detenerServidor() {
         if (procesosServidor != null && procesosServidor.isAlive()) {
             procesosServidor.destroy();
-            appendConsola("[INFO] Señal de detención enviada al servidor.");
+            appendConsola("[INFO] Senal de detencion enviada al servidor.");
         }
         btnIniciar.setDisable(false);
         btnDetener.setDisable(true);
@@ -302,15 +367,15 @@ public class MonitorApp extends Application {
         consola.setScrollTop(Double.MAX_VALUE);
     }
 
-    // ── Árbol ─────────────────────────────────────────────────────────────────
+    // ── Arbol ─────────────────────────────────────────────────────────────────
 
     private TreeView<NodoModulo> construirArbol() {
         TreeItem<NodoModulo> raiz = new TreeItem<>(new NodoModulo("ROOT", "root", ""));
         raiz.setExpanded(true);
 
         for (String tipo : TIPOS_ORDEN) {
-            TreeItem<NodoModulo> grupo = new TreeItem<>(new NodoModulo("GRUPO", tipo,
-                    NodoModulo.nombreTipo(tipo)));
+            TreeItem<NodoModulo> grupo = new TreeItem<>(
+                new NodoModulo("GRUPO", tipo, NodoModulo.nombreTipo(tipo)));
             grupo.setExpanded(true);
             raiz.getChildren().add(grupo);
             grupos.put(tipo, grupo);
@@ -318,15 +383,19 @@ public class MonitorApp extends Application {
 
         TreeView<NodoModulo> tree = new TreeView<>(raiz);
         tree.setShowRoot(false);
-        tree.setStyle("-fx-background-color: transparent; -fx-text-fill: " + T_BRIGHT + ";" +
-                "-fx-font-size: 13px;");
+        // El CSS en monitor.css controla el fondo de las celdas
+        tree.setStyle("-fx-background-color: transparent; -fx-font-size: 13px;");
 
         tree.setCellFactory(tv -> new TreeCell<>() {
             @Override
             protected void updateItem(NodoModulo item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) { setText(null); setGraphic(null); setStyle(""); return; }
-                if ("GRUPO".equals(item.clase)) renderGrupo(item);
+                if (empty || item == null) {
+                    setText(null); setGraphic(null);
+                    setStyle("-fx-background-color: transparent;");
+                    return;
+                }
+                if ("GRUPO".equals(item.clase))     renderGrupo(item);
                 else if ("INSTANCIA".equals(item.clase)) renderInstancia(item);
                 else { setText(null); setGraphic(null); }
             }
@@ -337,13 +406,15 @@ public class MonitorApp extends Application {
                 Label lbl = new Label(item.etiqueta);
                 lbl.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: " + color + ";");
                 Label badge = new Label(String.valueOf(n));
-                badge.setStyle("-fx-font-size: 10px; -fx-text-fill: " + color + ";" +
-                        "-fx-background-color: " + color + "22; -fx-padding: 1 7;" +
-                        "-fx-background-radius: 10;");
+                badge.setStyle(
+                    "-fx-font-size: 10px; -fx-text-fill: " + color + ";" +
+                    "-fx-background-color: " + color + "22; -fx-padding: 1 7;" +
+                    "-fx-background-radius: 10;"
+                );
                 HBox h = new HBox(8, lbl, badge);
                 h.setAlignment(Pos.CENTER_LEFT);
                 setGraphic(h); setText(null);
-                setStyle("-fx-padding: 4 8;");
+                setStyle("-fx-padding: 4 8; -fx-background-color: transparent;");
             }
 
             private void renderInstancia(NodoModulo item) {
@@ -359,7 +430,7 @@ public class MonitorApp extends Application {
                 HBox h = new HBox(8, dot, lbl);
                 h.setAlignment(Pos.CENTER_LEFT);
                 setGraphic(h); setText(null);
-                setStyle("-fx-padding: 2 8 2 24;");
+                setStyle("-fx-padding: 2 8 2 24; -fx-background-color: transparent;");
             }
         });
 
@@ -379,7 +450,7 @@ public class MonitorApp extends Application {
         panel.setAlignment(Pos.TOP_LEFT);
 
         if (nodo == null) {
-            Label hint = new Label("Selecciona una conexión\npara ver sus detalles");
+            Label hint = new Label("Selecciona una conexion\npara ver sus detalles");
             hint.setStyle("-fx-font-size: 14px; -fx-text-fill: " + T_DIM + "; -fx-text-alignment: center;");
             hint.setWrapText(true);
             VBox contenedor = new VBox(hint);
@@ -393,9 +464,11 @@ public class MonitorApp extends Application {
         String color = colorTipo(nodo.tipo);
 
         Label tipo = new Label(NodoModulo.nombreTipo(nodo.tipo));
-        tipo.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: " + color + ";" +
-                "-fx-background-color: " + color + "22; -fx-padding: 4 12; -fx-background-radius: 6;" +
-                "-fx-border-color: " + color + "44; -fx-border-radius: 6;");
+        tipo.setStyle(
+            "-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: " + color + ";" +
+            "-fx-background-color: " + color + "22; -fx-padding: 4 12; -fx-background-radius: 6;" +
+            "-fx-border-color: " + color + "44; -fx-border-radius: 6;"
+        );
 
         Circle dot = new Circle(5, Color.web(C_CONN));
         Label lblConn = new Label("CONECTADO");
@@ -404,15 +477,17 @@ public class MonitorApp extends Application {
         estadoRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox detalles = new VBox(8,
-                filaDetalle("Nombre del equipo:", nodo.nombrePc, T_BRIGHT),
-                filaDetalle("Dirección IP:", nodo.ip, ACC),
-                filaDetalle("Puerto TCP:", String.valueOf(nodo.puerto), T_MED),
-                filaDetalle("Tipo de módulo:", NodoModulo.nombreTipo(nodo.tipo), color),
-                filaDetalle("Conectado desde:", nodo.timestamp, T_DIM)
+            filaDetalle("Nombre del equipo:", nodo.nombrePc, T_BRIGHT),
+            filaDetalle("Direccion IP:",      nodo.ip,       ACC),
+            filaDetalle("Puerto TCP:",         String.valueOf(nodo.puerto), T_MED),
+            filaDetalle("Tipo de modulo:",    NodoModulo.nombreTipo(nodo.tipo), color),
+            filaDetalle("Conectado desde:",   nodo.timestamp, T_DIM)
         );
         detalles.setPadding(new Insets(16));
-        detalles.setStyle("-fx-background-color: " + BG_CARD + ";" +
-                "-fx-border-color: " + BG_BORDER + "; -fx-border-radius: 8; -fx-background-radius: 8;");
+        detalles.setStyle(
+            "-fx-background-color: " + BG_CARD + ";" +
+            "-fx-border-color: " + BG_BORDER + "; -fx-border-radius: 8; -fx-background-radius: 8;"
+        );
 
         panel.getChildren().addAll(tipo, estadoRow, detalles);
         VBox.setVgrow(panel, Priority.ALWAYS);
@@ -429,7 +504,7 @@ public class MonitorApp extends Application {
         return row;
     }
 
-    // ── Lógica de conexión ────────────────────────────────────────────────────
+    // ── Logica de conexion ────────────────────────────────────────────────────
 
     private void conectarAsync() {
         Thread t = new Thread(() -> {
@@ -442,7 +517,7 @@ public class MonitorApp extends Application {
                 }));
                 cm.setOnDesconexion(() -> Platform.runLater(this::marcarDesconectado));
                 cm.setOnConexionRestaurada(() -> Platform.runLater(() -> {
-                    limpiarArbol(); // el servidor re-enviará STATUS_UPDATE CONECTADO para cada cliente activo
+                    limpiarArbol();
                     marcarConectado();
                 }));
                 cm.conectar(HOST, PUERTO);
@@ -450,7 +525,6 @@ public class MonitorApp extends Application {
                 Platform.runLater(this::marcarConectado);
             } catch (IOException e) {
                 Platform.runLater(this::marcarDesconectado);
-                // La reconexión está manejada dentro de ConexionMonitor
             }
         }, "monitor-connect");
         t.setDaemon(true);
@@ -459,11 +533,8 @@ public class MonitorApp extends Application {
 
     private void procesarStatus(ConexionMonitor.StatusMsg msg) {
         Platform.runLater(() -> {
-            if ("CONECTADO".equals(msg.accion)) {
-                agregarInstancia(msg);
-            } else if ("DESCONECTADO".equals(msg.accion)) {
-                eliminarInstancia(msg.getId());
-            }
+            if ("CONECTADO".equals(msg.accion))        agregarInstancia(msg);
+            else if ("DESCONECTADO".equals(msg.accion)) eliminarInstancia(msg.getId());
             actualizarConteos();
         });
     }
@@ -474,7 +545,7 @@ public class MonitorApp extends Application {
         if (grupo == null) return;
 
         NodoModulo nodo = new NodoModulo("INSTANCIA", msg.tipo, msg.etiquetaUI(),
-                msg.ip, msg.puerto, msg.nombrePc, msg.timestamp);
+            msg.ip, msg.puerto, msg.nombrePc, msg.timestamp);
         TreeItem<NodoModulo> item = new TreeItem<>(nodo);
         grupo.getChildren().add(item);
         instancias.put(msg.getId(), item);
@@ -490,15 +561,13 @@ public class MonitorApp extends Application {
 
     private void limpiarArbol() {
         instancias.clear();
-        for (TreeItem<NodoModulo> grupo : grupos.values()) {
-            grupo.getChildren().clear();
-        }
+        for (TreeItem<NodoModulo> grupo : grupos.values()) grupo.getChildren().clear();
         actualizarConteos();
     }
 
     private void actualizarConteos() {
         int total = instancias.size();
-        lblConexiones.setText(total + " conexión" + (total != 1 ? "es" : ""));
+        lblConexiones.setText(total + " conexion" + (total != 1 ? "es" : ""));
         arbol.refresh();
     }
 
@@ -506,17 +575,21 @@ public class MonitorApp extends Application {
         dotEstado.setFill(Color.web(C_CONN));
         lblEstado.setText("Conectado");
         lblEstado.setStyle("-fx-font-size: 11px; -fx-text-fill: " + C_CONN + ";");
-        dotEstado.getParent().setStyle("-fx-background-color: rgba(50,215,75,0.10);" +
-                "-fx-border-color: rgba(50,215,75,0.30); -fx-border-radius: 20; -fx-background-radius: 20;");
+        dotEstado.getParent().setStyle(
+            "-fx-background-color: rgba(50,215,75,0.10);" +
+            "-fx-border-color: rgba(50,215,75,0.30); -fx-border-radius: 20; -fx-background-radius: 20;"
+        );
         pulseDot();
     }
 
     private void marcarDesconectado() {
         dotEstado.setFill(Color.web("#FF453A"));
-        lblEstado.setText("Sin conexión — reconectando...");
+        lblEstado.setText("Sin conexion — reconectando...");
         lblEstado.setStyle("-fx-font-size: 11px; -fx-text-fill: #FF453A;");
-        dotEstado.getParent().setStyle("-fx-background-color: rgba(255,69,58,0.10);" +
-                "-fx-border-color: rgba(255,69,58,0.30); -fx-border-radius: 20; -fx-background-radius: 20;");
+        dotEstado.getParent().setStyle(
+            "-fx-background-color: rgba(255,69,58,0.10);" +
+            "-fx-border-color: rgba(255,69,58,0.30); -fx-border-radius: 20; -fx-background-radius: 20;"
+        );
     }
 
     private void pulseDot() {
@@ -532,8 +605,8 @@ public class MonitorApp extends Application {
         root.setOpacity(0);
         root.setTranslateY(-6);
         new ParallelTransition(
-                fade(root, 0, 1, 300),
-                slide(root, -6, 0, 300)
+            fade(root, 0, 1, 300),
+            slide(root, -6, 0, 300)
         ).play();
     }
 

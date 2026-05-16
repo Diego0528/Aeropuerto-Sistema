@@ -69,7 +69,8 @@ public class GeneralApp extends Application {
 
     // ── Estado ────────────────────────────────────────────────────────────────
     private ConexionServidor conexion;
-    private String dpiActual = null;
+    private ChatPanel        chatPanel;
+    private String           dpiActual = null;
 
     // Momento en que se llamó al pasajero — para medir tiempo de atención
     private long tiempoInicioAtencion = 0;
@@ -97,7 +98,8 @@ public class GeneralApp extends Application {
         stage.setMinWidth(860);
         stage.setMinHeight(520);
 
-        conexion = new ConexionServidor(HOST, PUERTO);
+        chatPanel = new ChatPanel();
+        conexion  = new ConexionServidor(HOST, PUERTO);
 
         // Configurar callbacks de reconexión ANTES de conectar
         conexion.setOnConexionPerdida(() -> Platform.runLater(this::marcarSinConexion));
@@ -211,7 +213,8 @@ public class GeneralApp extends Application {
         reloj.play();
 
         badgeConexion = construirBadgeConexion(disponible);
-        HBox derecha = new HBox(18, lblFecha, lblHora, badgeConexion);
+        Button btnChat = chatPanel.crearBotonChat();
+        HBox derecha = new HBox(14, lblFecha, lblHora, btnChat, badgeConexion);
         derecha.setAlignment(Pos.CENTER_RIGHT);
 
         nav.getChildren().addAll(brand, derecha);

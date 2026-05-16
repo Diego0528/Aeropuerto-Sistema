@@ -77,7 +77,8 @@ public class EspecialApp extends Application {
 
     // ── Estado ────────────────────────────────────────────────────────────────
     private ConexionServidor conexion;
-    private String dpiActual = null;
+    private ChatPanel        chatPanel;
+    private String           dpiActual = null;
     private long   tiempoInicioAtencion = 0;
 
     private Label            labelTurno;
@@ -108,7 +109,8 @@ public class EspecialApp extends Application {
         stage.setMinWidth(920);
         stage.setMinHeight(580);
 
-        conexion = new ConexionServidor(HOST, PUERTO);
+        chatPanel = new ChatPanel();
+        conexion  = new ConexionServidor(HOST, PUERTO);
         boolean disponible = intentarConexion();
 
         VBox root = construirUI(disponible);
@@ -227,7 +229,8 @@ public class EspecialApp extends Application {
         reloj.play();
 
         badgeConexion = construirBadgeConexion(disponible);
-        HBox derecha = new HBox(18, lblFecha, lblHora, badgeConexion);
+        Button btnChat = chatPanel.crearBotonChat();
+        HBox derecha = new HBox(14, lblFecha, lblHora, btnChat, badgeConexion);
         derecha.setAlignment(Pos.CENTER_RIGHT);
 
         nav.getChildren().addAll(brand, derecha);

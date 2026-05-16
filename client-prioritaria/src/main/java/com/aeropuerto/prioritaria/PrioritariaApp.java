@@ -60,7 +60,8 @@ public class PrioritariaApp extends Application {
 
     // ── Estado ────────────────────────────────────────────────────────────────
     private ConexionServidor conexion;
-    private String dpiActual = null;
+    private ChatPanel        chatPanel;
+    private String           dpiActual = null;
     private long tiempoInicioAtencion = 0;
 
     private Label            labelTurno;
@@ -88,7 +89,8 @@ public class PrioritariaApp extends Application {
         stage.setMinWidth(880);
         stage.setMinHeight(560);
 
-        conexion = new ConexionServidor(HOST, PUERTO);
+        chatPanel = new ChatPanel();
+        conexion  = new ConexionServidor(HOST, PUERTO);
         conexion.setOnConexionPerdida(() -> Platform.runLater(this::marcarSinConexion));
         conexion.setOnConexionRestaurada(() -> Platform.runLater(this::marcarConectado));
         boolean disponible = intentarConexion();
@@ -184,8 +186,10 @@ public class PrioritariaApp extends Application {
         reloj.setCycleCount(Animation.INDEFINITE); reloj.play();
 
         badgeConexion = construirBadgeConexion(disponible);
-        nav.getChildren().addAll(brand, new HBox(18, lblFecha, lblHora, badgeConexion));
-        ((HBox) nav.getChildren().get(1)).setAlignment(Pos.CENTER_RIGHT);
+        Button btnChat = chatPanel.crearBotonChat();
+        HBox derecha = new HBox(14, lblFecha, lblHora, btnChat, badgeConexion);
+        derecha.setAlignment(Pos.CENTER_RIGHT);
+        nav.getChildren().addAll(brand, derecha);
         return nav;
     }
 
