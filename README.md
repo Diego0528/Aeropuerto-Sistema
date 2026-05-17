@@ -1,4 +1,4 @@
-# AeroQueue v1.1 — Sistema de Colas — Aeropuerto Internacional La Aurora
+# AeroQueue v1.1 — Sistema de Colas — Aeropuerto Internacional
 
 Sistema de gestión de turnos para aeropuerto, implementado con arquitectura cliente-servidor sobre sockets TCP/IP. Desarrollado en Java 21 con interfaz gráfica JavaFX. Distribuible como `.exe` portable sin necesidad de Java instalado.
 
