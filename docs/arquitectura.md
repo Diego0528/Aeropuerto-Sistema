@@ -5,21 +5,21 @@
 El sistema sigue una arquitectura **cliente-servidor** distribuida con comunicación por sockets TCP/IP. Un servidor central gestiona el estado de las tres colas, y múltiples clientes JavaFX se conectan a él para registrar pasajeros u operar ventanillas. Un segundo servidor de chat escucha en el puerto 5001 para el canal interno entre módulos.
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          SERVIDOR CENTRAL                           │
-│          ServerMain :5000              ChatServer :5001             │
-│                                                                     │
+┌────────────────────────────────────────────────────────────────────┐
+│                          SERVIDOR CENTRAL                          │
+│          ServerMain :5000              ChatServer :5001            │
+│                                                                    │
 │  ┌───────────────────────────────────┐  ┌─────────────────────┐    │
 │  │       GestorColas (Singleton)     │  │   ChatServer        │    │
 │  │                                   │  │   (hilo dedicado)   │    │
 │  │  Cola<Pasajero>  TablaHash<K,V>   │  └─────────────────────┘    │
 │  │  colaGeneral     indicePorDpi     │                             │
 │  │  colaPrioritaria                  │  ┌─────────────────────┐    │
-│  │  colaEspecial                     │  │  RegistroConexiones  │    │
-│  └───────────────────────────────────┘  │  TablaHash<id,info>  │    │
+│  │  colaEspecial                     │  │  RegistroConexiones │    │
+│  └───────────────────────────────────┘  │  TablaHash<id,info> │    │
 │                                         └─────────────────────┘    │
-│   ClientHandler(hilo x cliente)                                     │
-└──────┬──────────────┬──────────────┬──────────────┬───────────────┘
+│   ClientHandler(hilo x cliente)                                    │
+└──────┬──────────────┬──────────────┬──────────────┬────────────────┘
        │ TCP :5000    │ TCP :5000    │ TCP :5000    │ TCP :5000
 ┌──────┴──────┐ ┌─────┴──────┐ ┌────┴──────┐ ┌────┴──────────┐
 │   Registro  │ │  General   │ │ Priorit.  │ │   Especial    │

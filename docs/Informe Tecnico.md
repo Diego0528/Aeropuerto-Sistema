@@ -2,7 +2,7 @@
 ## Aeropuerto Internacional — Sistema de Gestión de Colas
 
 **Versión del sistema:** 1.1  
-**Fecha del informe:** 12 de mayo de 2026  
+**Fecha del informe:** 16 de mayo de 2026  
 **Autor del proyecto:** Diego  
 **Tecnología principal:** Java 21 + JavaFX 21.0.2  
 **Modelo de arquitectura:** Cliente/Servidor TCP con protocolo de texto plano
