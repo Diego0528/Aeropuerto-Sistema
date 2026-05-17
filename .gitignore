@@ -45,7 +45,7 @@ desktop.ini
 # Logs
 # ========================
 *.log
-logs/
+/logs/
 
 # ========================
 # Archivos temporales

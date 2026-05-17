@@ -1,10 +1,18 @@
-/* ── Visor de Logs — estilos dark para TableView y controles ───────────── */
+/* ── Visor de Logs — dark theme ─────────────────────────────────────────── */
+
+/* ── FIX CRÍTICO: área de contenido del TabPane ───────────────────────── */
+.tab-pane > .tab-content-area {
+    -fx-background-color: #0f1629;
+    -fx-padding: 0;
+}
 
 /* ── TableView ─────────────────────────────────────────────────────────── */
 .table-view {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-table-cell-border-color: rgba(255,255,255,0.06);
+    -fx-control-inner-background: #111828;
+    -fx-control-inner-background-alt: #0f1629;
 }
 
 .table-view .column-header-background {
@@ -57,7 +65,16 @@
     -fx-background-color: transparent;
 }
 
-/* placeholder cuando la tabla esta vacia */
+/* VirtualFlow y viewport — evita fondo blanco en filas vacías */
+.table-view .virtual-flow {
+    -fx-background-color: transparent;
+}
+
+.table-view .clipped-viewport {
+    -fx-background-color: transparent;
+}
+
+/* placeholder cuando la tabla está vacía */
 .table-view .placeholder .label {
     -fx-text-fill: rgba(255,255,255,0.35);
 }
@@ -79,7 +96,7 @@
     -fx-padding: 2;
 }
 
-/* ── TabPane (pestanas Live / Base de Datos) ───────────────────────────── */
+/* ── TabPane (pestañas Live / Registros) ───────────────────────────────── */
 .tab-pane .tab-header-area .tab-header-background {
     -fx-background-color: rgba(0,0,0,0.20);
 }
@@ -109,7 +126,7 @@
     -fx-text-fill: rgba(255,255,255,0.75);
 }
 
-/* ── ComboBox (filtros de modulo y nivel) ──────────────────────────────── */
+/* ── ComboBox (filtros de módulo y nivel) ──────────────────────────────── */
 .combo-box {
     -fx-background-color: rgba(255,255,255,0.06);
     -fx-border-color: rgba(255,255,255,0.12);
