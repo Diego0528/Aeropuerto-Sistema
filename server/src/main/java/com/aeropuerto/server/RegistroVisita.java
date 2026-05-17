@@ -19,7 +19,7 @@ public class RegistroVisita {
     private final int         numeroCola;
     private final String      horaRegistro;
 
-    // Campos que se actualizan despues del registro inicial
+    // Campos que se actualizan después del registro inicial
     private String horaLlamada  = "";
     private String horaFin      = "";
     private String vuelo        = "";
@@ -60,7 +60,7 @@ public class RegistroVisita {
         this.duracionSeg   = duracionSeg;
     }
 
-    /** Serializa a una linea CSV para almacenamiento en disco. */
+    /** Serializa a una línea CSV para almacenamiento en disco. */
     public String toCSV() {
         return String.join(";",
             dpi, esc(nombre), tipo.name(), String.valueOf(numeroCola),
